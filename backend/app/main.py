@@ -37,9 +37,24 @@ app.include_router(control.router)
 app.include_router(ws.router)
 
 # 托管 Web Dashboard 静态文件（web/ 目录）
-_WEB_DIR = Path(__file__).resolve().parent.parent.parent / "web"
-if _WEB_DIR.exists():
+# 向上逐级探测 web 目录，兼容：
+#   容器内 __file__=/app/app/main.py → /app/web
+#   本地 __file__=<repo>/backend/app/main.py → <repo>/web
+def _find_web_dir():
+    cur = Path(__file__).resolve().parent
+    for _ in range(6):  # 向上探测最多 6 级
+        candidate = cur / "web"
+        if candidate.is_dir():
+            return candidate
+        cur = cur.parent
+    return None
+
+_WEB_DIR = _find_web_dir()
+if _WEB_DIR:
     app.mount("/dashboard", StaticFiles(directory=_WEB_DIR, html=True), name="dashboard")
+    logger.info("Web Dashboard 已挂载：%s", _WEB_DIR)
+else:
+    logger.warning("未找到 web/ 目录，Dashboard 不可用（/dashboard 将返回 404）")
 
 # ---- 消息消费者（MQTT + ZMQ）----
 _subscribers = []
