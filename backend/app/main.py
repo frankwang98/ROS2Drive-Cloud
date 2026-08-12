@@ -1,0 +1,71 @@
+"""FastAPI 应用入口。"""
+import asyncio
+import logging
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.api import control, robot, system, ws
+from app.core.config import settings
+from app.services.mqtt_consumer import MQTTSubscriber
+from app.services.robot_state import state_store
+from app.services.zmq_consumer import ZMQSubscriber
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("robot")
+
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+    debug=settings.debug,
+)
+
+# CORS：允许 Web Dashboard 跨域访问
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(system.router)
+app.include_router(robot.router)
+app.include_router(control.router)
+app.include_router(ws.router)
+
+# 托管 Web Dashboard 静态文件（web/ 目录）
+_WEB_DIR = Path(__file__).resolve().parent.parent.parent / "web"
+if _WEB_DIR.exists():
+    app.mount("/dashboard", StaticFiles(directory=_WEB_DIR, html=True), name="dashboard")
+
+# ---- 消息消费者（MQTT + ZMQ）----
+_subscribers = []
+
+
+def _on_message(topic: str, payload: dict) -> None:
+    """将消息总线上的机器人数据写入状态管理器。"""
+    # payload 形如 {"topic": "sdc/speed", "data": 2.4}
+    rob_topic = payload.get("topic", topic)
+    state_store.update_topic(rob_topic, payload.get("data"))
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    loop = asyncio.get_running_loop()
+    state_store.attach_loop(loop)
+
+    mqtt = MQTTSubscriber(_on_message)
+    mqtt.start()
+    zmq = ZMQSubscriber(_on_message)
+    zmq.start()
+    _subscribers.extend([mqtt, zmq])
+    logger.info("机器人后端已启动：%s v%s", settings.app_name, settings.app_version)
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    for sub in _subscribers:
+        sub.stop()

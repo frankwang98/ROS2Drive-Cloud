@@ -1,0 +1,12 @@
+# 项目忽略文件
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.pytest_cache/
+node_modules/
+build/
+dist/
+*.so

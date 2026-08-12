@@ -1,0 +1,27 @@
+# 外部访问入口（Ingress）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: robot-cloud-ingress
+  namespace: robot-cloud
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: robot.cloud.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: robot-backend
+                port:
+                  name: http
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: robot-backend
+                port:
+                  name: http

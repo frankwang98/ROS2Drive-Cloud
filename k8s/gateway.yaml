@@ -1,0 +1,54 @@
+# 机器人消息桥接层（Gateway）
+# 作为 sidecar 运行在机器人侧，或作为集群内服务连接 robot-cloud 网络
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: robot-gateway
+  namespace: robot-cloud
+  labels:
+    app: robot-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: robot-gateway
+  template:
+    metadata:
+      labels:
+        app: robot-gateway
+    spec:
+      containers:
+        - name: gateway
+          image: cnb.cool/frankwang98/robot_platform:gateway
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MQTT_BROKER
+              value: "mqtt-broker"
+            - name: MQTT_PORT
+              value: "1883"
+            - name: ROBOT_ID
+              value: "car01"
+          ports:
+            - containerPort: 5555
+              name: zmq
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: robot-gateway
+  namespace: robot-cloud
+spec:
+  selector:
+    app: robot-gateway
+  ports:
+    - port: 5555
+      targetPort: zmq
+      name: zmq
+  type: ClusterIP

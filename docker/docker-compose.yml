@@ -1,0 +1,41 @@
+# Robot Cloud Platform 本地一键启动
+# 依赖：Docker Compose v2
+# 启动：docker compose -f docker/docker-compose.yml up --build
+version: "3.8"
+
+services:
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    container_name: robot-mqtt
+    ports:
+      - "1883:1883"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: robot-backend
+    environment:
+      MQTT_BROKER: mqtt-broker
+      MQTT_PORT: "1883"
+      ZMQ_PUB_PORT: "5555"
+      MQTT_TOPIC_PREFIX: robot
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mqtt-broker
+    restart: unless-stopped
+
+  # 模拟机器人消息（无需真实 ROS2 环境，向 MQTT 发测试数据）
+  simulator:
+    image: python:3.11-slim
+    container_name: robot-sim
+    working_dir: /app
+    volumes:
+      - ../gateway:/app
+    command: >
+      bash -c "pip install paho-mqtt && python3 mqtt_simulator.py"
+    depends_on:
+      - mqtt-broker
+    restart: unless-stopped

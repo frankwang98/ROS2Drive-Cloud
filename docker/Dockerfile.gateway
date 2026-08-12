@@ -1,0 +1,14 @@
+# ROS2 ⇄ MQTT/ZMQ 桥接层
+FROM ros:humble-ros-base
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY gateway/requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+
+COPY gateway/ /opt/gateway/
+WORKDIR /opt/gateway
+
+ENTRYPOINT ["bash", "-c", "source /opt/ros/humble/setup.bash && exec python3 ros2_bridge.py $@", "--"]
