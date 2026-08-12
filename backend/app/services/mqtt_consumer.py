@@ -38,7 +38,9 @@ class MQTTSubscriber:
             return
         self._running = True
 
-        def on_connect(client, userdata, flags, rc):
+        def on_connect(client, userdata, flags, reason_code, properties=None):
+            # paho-mqtt VERSION2 回调签名为 (client, userdata, flags, reason_code, properties)
+            rc = getattr(reason_code, "value", reason_code)
             logger.info("MQTT 已连接, rc=%s", rc)
             client.subscribe(f"{settings.mqtt_topic_prefix}/#")
 
