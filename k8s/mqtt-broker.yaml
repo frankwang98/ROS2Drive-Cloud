@@ -1,4 +1,16 @@
 # MQTT Broker（Eclipse Mosquitto）
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mqtt-broker-config
+  namespace: robot-cloud
+data:
+  mosquitto.conf: |
+    # 使用自定义端口 1884（项目统一使用 1884 作为 MQTT 端口）
+    listener 1884
+    allow_anonymous true
+    persistence false
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,8 +32,12 @@ spec:
         - name: mosquitto
           image: eclipse-mosquitto:2
           ports:
-            - containerPort: 1883
+            - containerPort: 1884
               name: mqtt
+          volumeMounts:
+            - name: mosquitto-config
+              mountPath: /mosquitto/config/mosquitto.conf
+              subPath: mosquitto.conf
           resources:
             requests:
               cpu: 50m
@@ -29,6 +45,10 @@ spec:
             limits:
               cpu: 200m
               memory: 256Mi
+      volumes:
+        - name: mosquitto-config
+          configMap:
+            name: mqtt-broker-config
 ---
 apiVersion: v1
 kind: Service
@@ -39,7 +59,7 @@ spec:
   selector:
     app: mqtt-broker
   ports:
-    - port: 1883
+    - port: 1884
       targetPort: mqtt
       name: mqtt
   type: ClusterIP

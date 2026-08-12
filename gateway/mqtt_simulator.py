@@ -12,7 +12,7 @@ import time
 import paho.mqtt.client as mqtt
 
 BROKER = "mqtt-broker"
-PORT = 1883
+PORT = 1884
 TOPIC_PREFIX = "robot"
 ROBOT_ID = "car01"
 

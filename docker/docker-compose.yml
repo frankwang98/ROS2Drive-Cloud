@@ -8,7 +8,9 @@ services:
     image: eclipse-mosquitto:2
     container_name: robot-mqtt
     ports:
-      - "1883:1883"
+      - "1884:1884"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     restart: unless-stopped
 
   backend:
@@ -18,7 +20,7 @@ services:
     container_name: robot-backend
     environment:
       MQTT_BROKER: mqtt-broker
-      MQTT_PORT: "1883"
+      MQTT_PORT: "1884"
       ZMQ_PUB_PORT: "5555"
       MQTT_TOPIC_PREFIX: robot
     ports:

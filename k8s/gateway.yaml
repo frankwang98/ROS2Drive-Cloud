@@ -25,7 +25,7 @@ spec:
             - name: MQTT_BROKER
               value: "mqtt-broker"
             - name: MQTT_PORT
-              value: "1883"
+              value: "1884"
             - name: ROBOT_ID
               value: "car01"
           ports:

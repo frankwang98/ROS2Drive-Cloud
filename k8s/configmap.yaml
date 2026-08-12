@@ -6,7 +6,7 @@ metadata:
   namespace: robot-cloud
 data:
   MQTT_BROKER: "mqtt-broker"
-  MQTT_PORT: "1883"
+  MQTT_PORT: "1884"
   MQTT_TOPIC_PREFIX: "robot"
   ZMQ_PUB_PORT: "5555"
   APP_NAME: "Robot Cloud Platform"

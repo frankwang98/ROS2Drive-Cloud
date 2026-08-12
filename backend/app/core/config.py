@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # 消息总线（MQTT / ZMQ）
     mqtt_broker: str = "localhost"
-    mqtt_port: int = 1883
+    mqtt_port: int = 1884
     mqtt_topic_prefix: str = "robot"
     # ZMQ 发布端口
     zmq_pub_port: int = 5555

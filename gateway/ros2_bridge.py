@@ -97,7 +97,7 @@ def main():
     parser = argparse.ArgumentParser(description="ROS2 ⇄ MQTT/ZMQ 桥接")
     parser.add_argument("--robot-id", default="car01", help="机器人 ID")
     parser.add_argument("--mqtt-broker", default="localhost")
-    parser.add_argument("--mqtt-port", type=int, default=1883)
+    parser.add_argument("--mqtt-port", type=int, default=1884)
     parser.add_argument("--zmq-port", type=int, default=5555)
     args = parser.parse_args()
 
