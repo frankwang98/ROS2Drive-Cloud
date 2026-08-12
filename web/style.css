@@ -17,17 +17,30 @@ body {
   border-bottom: 1px solid #334155;
 }
 .topbar h1 { font-size: 20px; color: #38bdf8; }
+.topbar-right { display: flex; align-items: center; gap: 14px; }
 
 .conn { font-size: 13px; padding: 4px 12px; border-radius: 12px; }
 .conn.online { background: #065f46; color: #6ee7b7; }
 .conn.offline { background: #7f1d1d; color: #fca5a5; }
 
-.grid {
+/* 模式切换 */
+.mode-switch { display: flex; gap: 6px; background: #0f172a; border-radius: 8px; padding: 4px; }
+.mode-btn {
+  border: none; background: transparent; color: #94a3b8;
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.mode-btn:hover { color: #38bdf8; }
+.mode-btn.active { background: #0ea5e9; color: #fff; }
+
+/* 布局 */
+.layout {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: 380px 1fr;
   gap: 20px;
   padding: 24px;
 }
+.col-left { display: flex; flex-direction: column; gap: 20px; }
+.col-right { min-width: 0; }
 
 .card {
   background: #1e293b;
@@ -38,6 +51,14 @@ body {
 .card h2 { font-size: 16px; margin-bottom: 16px; color: #94a3b8; }
 .card h2 small { font-weight: normal; color: #64748b; }
 
+/* 模式徽标 */
+.badge {
+  display: inline-block; font-size: 12px; font-weight: 600;
+  padding: 2px 8px; border-radius: 10px; vertical-align: middle;
+}
+.badge.simulation { background: #064e3b; color: #34d399; }
+.badge.real { background: #1e3a8a; color: #60a5fa; }
+
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .stat { text-align: center; padding: 12px; background: #0f172a; border-radius: 8px; }
 .stat .label { display: block; font-size: 12px; color: #64748b; margin-bottom: 6px; }
@@ -46,6 +67,8 @@ body {
 
 .speed-bar { margin-top: 16px; height: 10px; background: #0f172a; border-radius: 6px; overflow: hidden; }
 .speed-fill { height: 100%; width: 0; background: linear-gradient(90deg, #22c55e, #38bdf8); transition: width 0.3s; }
+
+.pose-line { margin-top: 14px; font-size: 12px; color: #64748b; text-align: center; }
 
 .controls { display: flex; flex-direction: column; gap: 14px; }
 .control-group { display: flex; align-items: center; gap: 10px; }
@@ -61,3 +84,22 @@ button.primary { background: #0ea5e9; border-color: #0ea5e9; color: #fff; }
 .log { list-style: none; max-height: 260px; overflow-y: auto; font-size: 12px; }
 .log li { padding: 4px 0; border-bottom: 1px solid #1e293b; color: #94a3b8; word-break: break-all; }
 .log li .topic { color: #38bdf8; }
+
+/* 地图 */
+#map-card { display: flex; flex-direction: column; }
+#map-canvas {
+  width: 100%; border-radius: 8px; background: #0f172a;
+  border: 1px solid #334155;
+}
+.map-legend {
+  display: flex; gap: 18px; margin-top: 14px; font-size: 12px; color: #94a3b8;
+}
+.map-legend .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.car-dot { background: #38bdf8; }
+.trail-dot { background: #22d3ee; }
+.obst-dot { background: #ef4444; }
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+}

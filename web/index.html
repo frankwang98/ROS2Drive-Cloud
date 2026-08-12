@@ -9,61 +9,84 @@
 <body>
   <header class="topbar">
     <h1>🤖 Robot Cloud Platform</h1>
-    <div class="conn" id="conn-status">连接中…</div>
+    <div class="topbar-right">
+      <div class="mode-switch" id="mode-switch">
+        <button class="mode-btn active" data-mode="simulation">🧪 仿真模式</button>
+        <button class="mode-btn" data-mode="real">🚗 实车模式</button>
+      </div>
+      <div class="conn" id="conn-status">连接中…</div>
+    </div>
   </header>
 
-  <main class="grid">
-    <!-- 实时状态卡片 -->
-    <section class="card" id="status-card">
-      <h2>实时状态</h2>
-      <div class="stats">
-        <div class="stat">
-          <span class="label">速度</span>
-          <span class="value" id="speed">--</span><span class="unit">m/s</span>
+  <main class="layout">
+    <!-- 左列：实时状态 + 远程控制 -->
+    <div class="col-left">
+      <!-- 实时状态卡片 -->
+      <section class="card" id="status-card">
+        <h2>实时状态 <span class="badge" id="mode-badge">仿真</span></h2>
+        <div class="stats">
+          <div class="stat">
+            <span class="label">速度</span>
+            <span class="value" id="speed">--</span><span class="unit">m/s</span>
+          </div>
+          <div class="stat">
+            <span class="label">行为</span>
+            <span class="value" id="action">--</span>
+          </div>
+          <div class="stat">
+            <span class="label">前方距离</span>
+            <span class="value" id="front-distance">--</span><span class="unit">m</span>
+          </div>
+          <div class="stat">
+            <span class="label">障碍物</span>
+            <span class="value" id="obstacle-count">--</span>
+          </div>
         </div>
-        <div class="stat">
-          <span class="label">行为</span>
-          <span class="value" id="action">--</span>
+        <div class="speed-bar">
+          <div class="speed-fill" id="speed-fill"></div>
         </div>
-        <div class="stat">
-          <span class="label">前方距离</span>
-          <span class="value" id="front-distance">--</span><span class="unit">m</span>
-        </div>
-        <div class="stat">
-          <span class="label">障碍物</span>
-          <span class="value" id="obstacle-count">--</span>
-        </div>
-      </div>
-      <div class="speed-bar">
-        <div class="speed-fill" id="speed-fill"></div>
-      </div>
-    </section>
+        <div class="pose-line" id="pose-line">位置: -- / 朝向: --</div>
+      </section>
 
-    <!-- 远程控制 -->
-    <section class="card" id="control-card">
-      <h2>远程控制</h2>
-      <div class="controls">
-        <div class="control-group">
-          <label>控制算法</label>
-          <select id="algo-select">
-            <option value="0">PID</option>
-            <option value="1">Bang-Bang</option>
-            <option value="2">Ramp</option>
-          </select>
-          <button onclick="sendAlgo()">切换</button>
+      <!-- 远程控制 -->
+      <section class="card" id="control-card">
+        <h2>远程控制</h2>
+        <div class="controls">
+          <div class="control-group">
+            <label>控制算法</label>
+            <select id="algo-select">
+              <option value="0">PID</option>
+              <option value="1">Bang-Bang</option>
+              <option value="2">Ramp</option>
+            </select>
+            <button onclick="sendAlgo()">切换</button>
+          </div>
+          <div class="control-group">
+            <button onclick="togglePause()" id="pause-btn">暂停仿真</button>
+            <button onclick="clearTrail()">清除轨迹</button>
+          </div>
         </div>
-        <div class="control-group">
-          <button onclick="togglePause()" id="pause-btn">暂停仿真</button>
-          <button onclick="clearTrail()">清除轨迹</button>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- 消息监控 -->
-    <section class="card" id="message-card">
-      <h2>消息监控 <small>(最近 20 条)</small></h2>
-      <ul class="log" id="log"></ul>
-    </section>
+      <!-- 消息监控 -->
+      <section class="card" id="message-card">
+        <h2>消息监控 <small>(最近 20 条)</small></h2>
+        <ul class="log" id="log"></ul>
+      </section>
+    </div>
+
+    <!-- 右列：地图可视化 -->
+    <div class="col-right">
+      <section class="card" id="map-card">
+        <h2>🗺️ 地图 & 车辆</h2>
+        <canvas id="map-canvas" width="640" height="640"></canvas>
+        <div class="map-legend">
+          <span><i class="dot car-dot"></i> 车辆</span>
+          <span><i class="dot trail-dot"></i> 轨迹</span>
+          <span><i class="dot obst-dot"></i> 障碍物</span>
+        </div>
+      </section>
+    </div>
   </main>
 
   <script src="app.js"></script>
