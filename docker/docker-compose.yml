@@ -41,3 +41,19 @@ services:
     depends_on:
       - mqtt-broker
     restart: unless-stopped
+
+  # Mock 机器人（订阅 command 下行指令，验证云端→机器人链路）
+  mock-robot:
+    image: python:3.11-slim
+    container_name: robot-mock
+    working_dir: /app
+    volumes:
+      - ../gateway:/app
+    environment:
+      MQTT_BROKER: mqtt-broker
+      MQTT_PORT: "1884"
+    command: >
+      bash -c "pip install paho-mqtt && python3 mock_robot.py --mqtt-broker mqtt-broker --mqtt-port 1884"
+    depends_on:
+      - mqtt-broker
+    restart: unless-stopped

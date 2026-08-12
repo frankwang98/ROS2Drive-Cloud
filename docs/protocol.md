@@ -41,18 +41,34 @@
 
 云端 → 机器人方向的指令（由 gateway 消费并转成 ROS2 发布）：
 
-| 指令 | 话题 | 说明 |
-|------|------|------|
-| `set_control_algo` | `robot/{id}/command/control_algo` | 切换控制算法 (0/1/2) |
-| `toggle_pause` | `robot/{id}/command/pause` | 暂停/继续仿真 |
-| `clear_trail` | `robot/{id}/command/clear_trail` | 清除行驶轨迹 |
+| 指令 | command 主题 | 机器人侧 ROS2 话题 | 类型 | 说明 |
+|------|------|------|------|------|
+| `set_control_algo` | `robot/{id}/command/control_algo` | `sdc/control_algo` | Int32 | 切换控制算法 (0/1/2) |
+| `toggle_pause` | `robot/{id}/command/pause` | `sdc/pause` | Bool | 暂停/继续仿真 |
+| `clear_trail` | `robot/{id}/command/clear_trail` | `sdc/clear_trail` | Bool | 清除行驶轨迹 |
+
+### 下行指令消息格式
+
+由 Backend `/api/control` 发布到总线的 JSON：
+
+```json
+{
+  "robot_id": "car01",
+  "topic": "robot/car01/command/control_algo",
+  "action": "control_algo",
+  "value": 1
+}
+```
+
+- 简单触发型指令（如 `clear_trail`）可省略 `value`，gateway 默认按 `True` 处理。
+- gateway 支持统一消息模型（`topic` + `data`）与扁平指令（`action` + `value`）两种解析。
 
 ## 传输通道
 
 | 通道 | 用途 | 主题格式 |
 |------|------|----------|
 | MQTT | 主通道（可靠，持久化可选）| `robot/{robot_id}/{topic}` |
-| ZMQ  | 低延迟备用通道（PUB/SUB）| `robot/{robot_id}/{topic}` |
+| ZMQ  | 低延迟备用通道 | 上行 PUB `tcp://*:5555`，下行 REP `tcp://*:5556` |
 
 ## WebSocket 推送协议
 

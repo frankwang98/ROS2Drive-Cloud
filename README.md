@@ -87,6 +87,30 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### 两端联调（含下行控制）
+
+```bash
+# 一键启动 MQTT broker + Backend + 消息模拟器 + Mock 机器人（验证下行链路）
+./scripts/run_linktest.sh
+
+# 也可用 docker compose 一键启动（broker + backend + simulator + mock-robot）
+docker compose -f docker/docker-compose.yml up --build
+```
+
+启动后即可用 REST 下发控制指令并观察下行链路：
+
+```bash
+# 切换控制算法
+curl -X POST http://localhost:8000/api/control \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"set_control_algo","value":1}'
+
+# 暂停仿真
+curl -X POST http://localhost:8000/api/control \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"toggle_pause","value":true}'
+```
+
 ### 完整链路（容器化）
 
 ```bash
@@ -120,6 +144,13 @@ kubectl apply -f k8s/
 - `/sdc/pause` —— 暂停/继续
 
 Gateway 将这些 ROS2 话题转换为统一 JSON 模型，通过 MQTT/ZMQ 推送到云端 Backend，最终呈现在 Web Dashboard 上。
+
+**下行（云端 → 机器人）：**
+
+Web Dashboard 远程控制 → Backend `/api/control` → 消息总线 `robot/{id}/command/*` →
+Gateway 订阅并转发 → ROS2 话题（`sdc/control_algo` / `sdc/pause` / `sdc/clear_trail`）→ ros2_car 执行。
+
+> ros2_car 侧无需新增任何代码，只需保持发布/订阅上述 ROS2 话题即可。
 
 ---
 
