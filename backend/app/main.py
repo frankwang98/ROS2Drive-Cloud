@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import control, robot, system, ws
 from app.core.config import settings
 from app.services.mqtt_consumer import MQTTSubscriber
+from app.services.command_publisher import command_publisher
 from app.services.robot_state import state_store
 from app.services.zmq_consumer import ZMQSubscriber
 
@@ -76,6 +77,7 @@ async def startup() -> None:
     mqtt.start()
     zmq = ZMQSubscriber(_on_message)
     zmq.start()
+    command_publisher.start()
     _subscribers.extend([mqtt, zmq])
     logger.info("机器人后端已启动：%s v%s", settings.app_name, settings.app_version)
 
@@ -84,3 +86,4 @@ async def startup() -> None:
 async def shutdown() -> None:
     for sub in _subscribers:
         sub.stop()
+    command_publisher.stop()

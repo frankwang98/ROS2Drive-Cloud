@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # ZMQ 发布端口
     zmq_pub_port: int = 5555
 
+    # 默认机器人 ID（指令未指定 robot_id 时使用）
+    default_robot_id: str = "car01"
+
     # 机器人订阅的 ROS2 话题（由 gateway 转发）
     robot_topics: list[str] = [
         "sdc/speed",
