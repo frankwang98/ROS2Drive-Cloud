@@ -23,6 +23,7 @@ services:
       MQTT_PORT: "1884"
       ZMQ_PUB_PORT: "5555"
       MQTT_TOPIC_PREFIX: robot
+      ROBOT_MODE: simulation
     ports:
       - "8000:8000"
     depends_on:
@@ -37,7 +38,7 @@ services:
     volumes:
       - ../gateway:/app
     command: >
-      bash -c "pip install paho-mqtt && python3 mqtt_simulator.py"
+      bash -c "pip install paho-mqtt && python3 mqtt_simulator.py --mqtt-broker mqtt-broker --mqtt-port 1884 --mode simulation"
     depends_on:
       - mqtt-broker
     restart: unless-stopped

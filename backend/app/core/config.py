@@ -9,8 +9,17 @@ class Settings(BaseSettings):
 
     # 应用
     app_name: str = "Robot Cloud Platform"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
     debug: bool = False
+
+    # 运行模式：simulation（仿真，默认）/ real（实车，接入本地 ROS2）
+    # 可通过环境变量 ROBOT_MODE 或 /api/mode 动态切换
+    robot_mode: str = "simulation"
+
+    # 地图区域（米），用于 Web Dashboard 地图绘制
+    map_width: float = 20.0
+    map_height: float = 20.0
+    map_cell: float = 1.0  # 网格大小（米）
 
     # 服务端口
     host: str = "0.0.0.0"

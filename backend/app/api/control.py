@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.services.command_publisher import command_publisher
+from app.services.robot_state import state_store
 
 router = APIRouter(prefix="/api", tags=["control"])
 
@@ -36,6 +37,10 @@ def control(command: ControlCommand):
     published = command_publisher.publish(
         robot_id, command_key, command.value
     )
+
+    # 本地同步副作用：清空轨迹（仿真模式轨迹由 state_store 维护）
+    if command.action == "clear_trail":
+        state_store.clear_trail()
 
     return {
         "ok": published,

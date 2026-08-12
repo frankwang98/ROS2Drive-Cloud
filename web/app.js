@@ -1,5 +1,5 @@
 // Robot Cloud Platform Web Dashboard 前端逻辑
-// 通过 WebSocket 连接后端，实时展示机器人状态 + 远程控制
+// WebSocket 实时推送 + 模式切换 + 地图/车辆/轨迹可视化
 
 const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/robot";
 
@@ -7,8 +7,16 @@ const ACTIONS = { 0: "加速", 1: "巡航", 2: "减速", 3: "停车" };
 
 const connEl = document.getElementById("conn-status");
 const logEl = document.getElementById("log");
+const modeBadge = document.getElementById("mode-badge");
+const poseLine = document.getElementById("pose-line");
 
 let ws = null;
+let currentMode = "simulation";
+
+// 地图状态
+let pose = { x: 0, y: 0, heading: 0 };
+let trail = [];
+let obstacles = [];
 
 // ---------- WebSocket 连接 ----------
 function connect() {
@@ -17,6 +25,7 @@ function connect() {
   ws.onopen = () => {
     connEl.textContent = "已连接";
     connEl.className = "conn online";
+    fetchMode();
   };
 
   ws.onclose = () => {
@@ -43,6 +52,9 @@ function handleMessage(msg) {
   if (msg.type === "update") {
     applyTopic(msg.topic, msg.data);
     logMessage(msg.topic, msg.data);
+    if (msg.topic === "_system/mode") {
+      setModeUI(msg.data);
+    }
   }
 }
 
@@ -51,9 +63,40 @@ function applySnapshot(snap) {
   for (const [topic, item] of Object.entries(topics)) {
     applyTopic(topic, item.value);
   }
+  if (snap.mode) setModeUI(snap.mode);
+  if (snap.pose) {
+    pose = snap.pose;
+    updatePoseLine();
+    drawMap();
+  }
+  if (Array.isArray(snap.trail)) {
+    trail = snap.trail;
+    drawMap();
+  }
 }
 
 function applyTopic(topic, data) {
+  // 位姿话题 -> 更新地图
+  if (topic === "sdc/x" || topic === "pose/x" || topic === "odom/x") {
+    pose.x = Number(data) || 0;
+    updatePoseLine();
+    drawMap();
+  } else if (topic === "sdc/y" || topic === "pose/y" || topic === "odom/y") {
+    pose.y = Number(data) || 0;
+    updatePoseLine();
+    drawMap();
+  } else if (topic === "sdc/heading" || topic === "pose/heading") {
+    pose.heading = Number(data) || 0;
+    updatePoseLine();
+    drawMap();
+  } else if (topic === "sdc/obstacle_count") {
+    obstacles = Array.from({ length: Number(data) || 0 }, () => ({
+      x: (Math.random() - 0.5) * 14,
+      y: (Math.random() - 0.5) * 14,
+    }));
+    drawMap();
+  }
+
   const el = document.getElementById(selectorFor(topic));
   if (!el) return;
 
@@ -85,9 +128,152 @@ function logMessage(topic, data) {
   while (logEl.children.length > 20) logEl.removeChild(logEl.lastChild);
 }
 
+// ---------- 模式 ----------
+function fetchMode() {
+  fetch("/api/mode")
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.mode) setModeUI(data.mode);
+    })
+    .catch(() => {});
+}
+
+function setModeUI(mode) {
+  currentMode = mode === "real" ? "real" : "simulation";
+  modeBadge.textContent = currentMode === "real" ? "实车" : "仿真";
+  modeBadge.className = "badge " + currentMode;
+  document.querySelectorAll(".mode-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.mode === currentMode);
+  });
+}
+
+function switchMode(mode) {
+  fetch("/api/mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.ok) {
+        setModeUI(mode);
+        logMessage("_system/mode", mode);
+      }
+    })
+    .catch(() => {});
+}
+
+document.querySelectorAll(".mode-btn").forEach((btn) => {
+  btn.addEventListener("click", () => switchMode(btn.dataset.mode));
+});
+
+// ---------- 地图绘制 ----------
+function updatePoseLine() {
+  poseLine.textContent = `位置: (${pose.x.toFixed(2)}, ${pose.y.toFixed(2)}) / 朝向: ${((pose.heading * 180) / Math.PI).toFixed(0)}°`;
+}
+
+function drawMap() {
+  const canvas = document.getElementById("map-canvas");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+  const half = W / 2;
+
+  // 背景
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(0, 0, W, H);
+
+  // 网格（20x20 地图，每格 1m -> 画布 20 格）
+  const cellPx = W / 20;
+  ctx.strokeStyle = "#1e293b";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 20; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * cellPx, 0);
+    ctx.lineTo(i * cellPx, H);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, i * cellPx);
+    ctx.lineTo(W, i * cellPx);
+    ctx.stroke();
+  }
+
+  // 坐标轴
+  ctx.strokeStyle = "#334155";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(half, 0);
+  ctx.lineTo(half, H);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, half);
+  ctx.lineTo(W, half);
+  ctx.stroke();
+
+  // 障碍物（红色方块）
+  ctx.fillStyle = "#ef4444";
+  obstacles.forEach((o) => {
+    ctx.fillRect(half + o.x * cellPx - 4, half - o.y * cellPx - 4, 8, 8);
+  });
+
+  // 轨迹（青色线）
+  if (trail.length > 1) {
+    ctx.strokeStyle = "#22d3ee";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    trail.forEach((p, i) => {
+      const px = half + p[0] * cellPx;
+      const py = half - p[1] * cellPx;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+  }
+
+  // 车辆（蓝色圆 + 朝向箭头）
+  const cx = half + pose.x * cellPx;
+  const cy = half - pose.y * cellPx;
+  ctx.fillStyle = "#38bdf8";
+  ctx.beginPath();
+  ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+  ctx.fill();
+  // 外圈
+  ctx.strokeStyle = "#0ea5e9";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+  ctx.stroke();
+  // 朝向箭头
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  const len = 18;
+  const hx = cx + Math.cos(pose.heading) * len;
+  const hy = cy - Math.sin(pose.heading) * len;
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(hx, hy);
+  ctx.stroke();
+
+  // 车中心点
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// 窗口尺寸自适应
+function resizeMap() {
+  const canvas = document.getElementById("map-canvas");
+  const card = document.getElementById("map-card");
+  const size = Math.max(320, card.clientWidth - 42);
+  canvas.width = size;
+  canvas.height = size;
+  drawMap();
+}
+window.addEventListener("resize", resizeMap);
+
 // ---------- 远程控制 ----------
 function sendControl(action, payload) {
-  // 通过 REST 下发控制指令（可扩展为发布到机器人侧）
   fetch("/api/control", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -114,3 +300,4 @@ function clearTrail() {
 
 // 启动
 connect();
+window.addEventListener("load", resizeMap);

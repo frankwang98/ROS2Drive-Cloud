@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 
 from app.core.config import settings
+from app.services.robot_state import state_store
 
 router = APIRouter(tags=["system"])
 
@@ -12,6 +13,7 @@ def root():
         "app": settings.app_name,
         "version": settings.app_version,
         "status": "ok",
+        "mode": state_store.get_mode(),
     }
 
 

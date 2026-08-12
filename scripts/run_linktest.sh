@@ -54,16 +54,17 @@ ensure_broker() {
 
 # 2) 启动 Backend
 start_backend() {
-  echo ">> 启动 Backend (FastAPI) :8000"
+  echo ">> 启动 Backend (FastAPI) :8000 (mode=simulation)"
   ( cd backend && pip install -q -r requirements.txt && \
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 ) &
+    ROBOT_MODE=simulation uvicorn app.main:app --host 0.0.0.0 --port 8000 ) &
   BACKEND_PID=$!
 }
 
 # 3) 启动消息模拟器（可选）
 start_simulator() {
-  echo ">> 启动 MQTT 消息模拟器"
-  ( cd gateway && pip install -q paho-mqtt pyzmq && python3 mqtt_simulator.py ) &
+  echo ">> 启动 MQTT 消息模拟器（仿真模式）"
+  ( cd gateway && pip install -q paho-mqtt pyzmq && \
+    python3 mqtt_simulator.py --mqtt-broker localhost --mqtt-port 1884 --mode simulation ) &
   SIM_PID=$!
 }
 

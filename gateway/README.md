@@ -33,9 +33,14 @@ ROS2 topics (sdc/control_algo, sdc/pause, sdc/clear_trail)
 
 | 文件 | 作用 |
 |------|------|
-| `ros2_bridge.py` | 主桥接程序（上行订阅 + 下行转发）|
-| `mqtt_simulator.py` | 无真实 ROS2 环境时，向总线发送模拟上行数据 |
+| `ros2_bridge.py` | 主桥接程序（**实车模式**，上行订阅 + 下行转发，数据带 `mode=real`）|
+| `mqtt_simulator.py` | 无真实 ROS2 环境时向总线发送模拟上行数据（**仿真模式**，`--mode simulation`，含位姿话题驱动地图）|
 | `mock_robot.py` | 无真实机器人时，订阅 command 验证下行链路 |
+
+## 位姿与地图
+
+模拟器会发布位姿话题 `sdc/x` / `sdc/y` / `sdc/heading`，驱动 Web Dashboard 上的车辆位置、朝向与轨迹。
+实车模式下，`ros2_bridge.py` 同样桥接这三个话题（若 ros2_car 发布 `odom`/`pose` 亦可扩展映射）。
 
 ## 运行
 

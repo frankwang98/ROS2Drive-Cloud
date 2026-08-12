@@ -11,3 +11,4 @@ data:
   ZMQ_PUB_PORT: "5555"
   APP_NAME: "Robot Cloud Platform"
   DEBUG: "false"
+  ROBOT_MODE: "simulation"

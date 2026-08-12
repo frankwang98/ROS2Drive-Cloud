@@ -79,11 +79,38 @@
 
 ## 🚀 快速开始
 
+### 运行模式（仿真 / 实车）
+
+平台支持两种数据来源模式，可在 Web Dashboard 右上角或 `/api/mode` 动态切换：
+
+| 模式 | 数据源 | 适用场景 |
+|------|--------|----------|
+| `simulation`（默认）| `gateway/mqtt_simulator.py` | 无真实机器人的开发/演示，生成模拟数据并驱动地图小车运动 |
+| `real` | `gateway/ros2_bridge.py` | 接入本地 ROS2（ros2_car）实时数据，展示真实位姿/轨迹 |
+
+切换方式（REST）：
+
+```bash
+# 查询当前模式
+curl http://localhost:8000/api/mode
+
+# 切换为实车模式
+curl -X POST http://localhost:8000/api/mode \
+  -H 'Content-Type: application/json' -d '{"mode":"real"}'
+
+# 切换回仿真模式
+curl -X POST http://localhost:8000/api/mode \
+  -H 'Content-Type: application/json' -d '{"mode":"simulation"}'
+```
+
+> 模式仅标识数据来源，实车模式下需自行运行 `gateway/ros2_bridge.py` 并保证 ROS2 环境已 source。
+
 ### 后端本地启动
 
 ```bash
 cd backend
 pip install -r requirements.txt
+# 默认仿真模式；也可 ROBOT_MODE=real uvicorn ...
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -159,6 +186,7 @@ Gateway 订阅并转发 → ROS2 话题（`sdc/control_algo` / `sdc/pause` / `sd
 - [架构设计](docs/architecture.md)
 - [消息协议](docs/protocol.md)
 - [Kubernetes 部署](docs/deployment.md)
+- [实车模式·接入本地 ROS2 实时数据](docs/realtime-ros2.md)
 
 ---
 

@@ -11,6 +11,7 @@
   "robot_id": "car01",
   "topic": "sdc/speed",
   "type": "Float64",
+  "mode": "simulation",   // 或 real
   "data": 2.4,
   "ts": 1690000000
 }
@@ -21,6 +22,7 @@
 | `robot_id` | 机器人唯一标识 |
 | `topic` | 对应的 ROS2 话题名（或模拟话题名）|
 | `type` | 消息类型（ROS2 类型或 `simulated`）|
+| `mode` | 数据来源：`simulation`（仿真）/ `real`（实车）|
 | `data` | 载荷值（JSON 可序列化）|
 | `ts` | 时间戳（Unix 秒，可选）|
 
@@ -36,6 +38,9 @@
 | `sdc/obstacle_count` | Float64 | 当前障碍物数量 |
 | `simulation/markers` | MarkerArray | 道路/环境可视化（含 marker_count）|
 | `sensor/lidar` | PointCloud2 | LIDAR 点云元信息（宽高/步长）|
+| `sdc/x` | Float64 | 车辆 X 坐标（米，驱动地图）|
+| `sdc/y` | Float64 | 车辆 Y 坐标（米，驱动地图）|
+| `sdc/heading` | Float64 | 车头朝向（弧度，驱动地图箭头）|
 
 ## 控制指令话题
 

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import control, robot, system, ws
+from app.api import control, mode, robot, system, ws
 from app.core.config import settings
 from app.services.mqtt_consumer import MQTTSubscriber
 from app.services.command_publisher import command_publisher
@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(system.router)
 app.include_router(robot.router)
 app.include_router(control.router)
+app.include_router(mode.router)
 app.include_router(ws.router)
 
 # 托管 Web Dashboard 静态文件（web/ 目录）

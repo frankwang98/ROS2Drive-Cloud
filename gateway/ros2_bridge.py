@@ -51,6 +51,10 @@ TOPIC_SCHEMA = {
     "sdc/action_id": "Float64",
     "sdc/front_distance": "Float64",
     "sdc/obstacle_count": "Float64",
+    # 位姿（驱动地图上的车与轨迹；可按需扩展 odom/pose）
+    "sdc/x": "Float64",
+    "sdc/y": "Float64",
+    "sdc/heading": "Float64",
     "simulation/markers": "MarkerArray",
     "sensor/lidar": "PointCloud2",
 }
@@ -199,6 +203,7 @@ def build_bridge(robot_id: str, mqtt_broker: str, mqtt_port: int,
                 "robot_id": robot_id,
                 "topic": topic,
                 "type": msg_type,
+                "mode": "real",  # 实车模式数据标识
                 "data": extract_value(msg, msg_type),
             }
             text = json.dumps(payload)
