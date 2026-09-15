@@ -95,7 +95,7 @@ echo "  Dashboard:  http://localhost:8000/dashboard"
 echo "  状态接口:   curl http://localhost:8000/api/robot/status"
 echo "  下发指令:   curl -X POST http://localhost:8000/api/control \\"
 echo "                -H 'Content-Type: application/json' \\"
-echo "                -d '{\"action\":\"toggle_pause\",\"value\":true}'"
+echo "                -d '{\"action\":\"set_paused\",\"value\":true}'"
 echo ""
 echo "按 Ctrl+C 停止所有进程"
 trap 'echo ""; echo "== 停止所有进程 =="; \

@@ -17,10 +17,10 @@ Robot Cloud Platform 是一个"机器人 + 云原生"平台，核心目标是将
 │      Backend (FastAPI, Python)             │
 │   REST API · WebSocket · 状态管理 · 鉴权    │
 └────────────────────┬───────────────────────┘
-                     │ MQTT / ZMQ
+                     │ MQTT
 ┌────────────────────▼───────────────────────┐
 │      Gateway (ROS2 ⇄ 消息总线, Python)     │
-│   ROS2 topics → 统一 JSON → MQTT/ZMQ        │
+│   ROS2 topics → 统一 JSON → MQTT            │
 └────────────────────┬───────────────────────┘
                      │ ROS2 topics
 ┌────────────────────▼───────────────────────┐
@@ -35,7 +35,7 @@ Robot Cloud Platform 是一个"机器人 + 云原生"平台，核心目标是将
 - 运行于机器人侧或与机器人同网段
 - 订阅 ros2_car 的 ROS2 话题
 - 转换为统一 JSON 模型（`{robot_id, topic, type, data}`）
-- 双通道发布：MQTT（`robot/{robot_id}/{topic}`）+ ZMQ（PUB）
+- MQTT 是唯一默认车云数据面；ZMQ 仅作为显式开启的实验兼容通道
 
 ### 2. 后端状态管理（Backend）
 - `RobotStateStore`：线程安全地缓存每个话题最新值

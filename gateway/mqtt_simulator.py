@@ -13,6 +13,7 @@ import random
 import time
 
 import paho.mqtt.client as mqtt
+from robot_contracts import MessageType, envelope
 
 TOPIC_PREFIX = "robot"
 ROBOT_ID = "car01"
@@ -36,6 +37,7 @@ def publish_loop(broker: str, port: int, mode: str, robot_id: str = ROBOT_ID):
     x, y = 0.0, 0.0
     heading = 0.0
     step = 0
+    sequence = 0
     while True:
         # 模拟速度变化（加速→巡航→减速→停车 循环）
         speed = (speed + 0.2) % 3.0
@@ -54,9 +56,10 @@ def publish_loop(broker: str, port: int, mode: str, robot_id: str = ROBOT_ID):
             "sdc/action_id": action,
             "sdc/front_distance": round(front_distance, 2),
             "sdc/obstacle_count": random.randint(0, 5),
-            "sdc/x": round(x, 2),
-            "sdc/y": round(y, 2),
-            "sdc/heading": round(heading, 3),
+            "sdc/odometry": {
+                "pose": {"x": round(x, 2), "y": round(y, 2), "yaw": round(heading, 3)},
+                "velocity": {"linear": round(speed, 2), "angular": 0.0},
+            },
             "simulation/markers": {"marker_count": random.randint(100, 200)},
             "sensor/lidar": {
                 "width": 360,
@@ -66,15 +69,16 @@ def publish_loop(broker: str, port: int, mode: str, robot_id: str = ROBOT_ID):
         }
 
         for topic, data in samples.items():
-            payload = {
-                "robot_id": robot_id,
-                "topic": topic,
-                "type": "simulated",
-                "mode": mode,
-                "data": data,
-            }
-            client.publish(f"{TOPIC_PREFIX}/{robot_id}/{topic}", json.dumps(payload))
+            sequence += 1
+            payload = envelope(robot_id, MessageType.TELEMETRY, {
+                "name": topic, "source": mode, "value": data,
+            }, sequence=sequence)
+            client.publish(f"robots/{robot_id}/telemetry", json.dumps(payload))
             print(f"→ {topic}: {data}")
+
+        sequence += 1
+        heartbeat = envelope(robot_id, MessageType.HEARTBEAT, {}, sequence=sequence)
+        client.publish(f"robots/{robot_id}/heartbeat", json.dumps(heartbeat), qos=1)
 
         time.sleep(1.0)
 

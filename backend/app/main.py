@@ -12,7 +12,9 @@ from app.core.config import settings
 from app.services.mqtt_consumer import MQTTSubscriber
 from app.services.command_publisher import command_publisher
 from app.services.robot_state import state_store
+from app.services.robot_registry import robot_registry
 from app.services.zmq_consumer import ZMQSubscriber
+from robot_contracts import MessageType, parse_envelope
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("robot")
@@ -34,6 +36,7 @@ app.add_middleware(
 
 app.include_router(system.router)
 app.include_router(robot.router)
+app.include_router(robot.v1_router)
 app.include_router(control.router)
 app.include_router(mode.router)
 app.include_router(ws.router)
@@ -64,22 +67,39 @@ _subscribers = []
 
 def _on_message(topic: str, payload: dict) -> None:
     """将消息总线上的机器人数据写入状态管理器。"""
-    # payload 形如 {"topic": "sdc/speed", "data": 2.4}
-    rob_topic = payload.get("topic", topic)
-    state_store.update_topic(rob_topic, payload.get("data"))
+    try:
+        message = parse_envelope(payload)
+    except ValueError as exc:
+        logger.warning("丢弃不符合协议的消息 topic=%s: %s", topic, exc)
+        return
+    robot_id = message["robot_id"]
+    kind = MessageType(message["type"])
+    body = message["payload"]
+    if kind is MessageType.TELEMETRY:
+        name, value = body.get("name", "unknown"), body.get("value")
+        robot_registry.update_telemetry(robot_id, name, value, message["timestamp"])
+        # Legacy single-robot projection; Dashboard 完全迁移后删除。
+        state_store.update_topic(name, value)
+    elif kind is MessageType.HEARTBEAT:
+        robot_registry.heartbeat(robot_id, message["timestamp"])
+    elif kind is MessageType.COMMAND_ACK:
+        robot_registry.update_command_ack(robot_id, body)
 
 
 @app.on_event("startup")
 async def startup() -> None:
     loop = asyncio.get_running_loop()
     state_store.attach_loop(loop)
+    robot_registry.attach_loop(loop)
 
     mqtt = MQTTSubscriber(_on_message)
     mqtt.start()
-    zmq = ZMQSubscriber(_on_message)
-    zmq.start()
+    if settings.enable_zmq:
+        zmq = ZMQSubscriber(_on_message)
+        zmq.start()
+        _subscribers.append(zmq)
     command_publisher.start()
-    _subscribers.extend([mqtt, zmq])
+    _subscribers.append(mqtt)
     logger.info("机器人后端已启动：%s v%s", settings.app_name, settings.app_version)
 
 

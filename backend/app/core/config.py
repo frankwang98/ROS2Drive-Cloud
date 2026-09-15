@@ -1,7 +1,7 @@
 """应用核心配置。"""
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -25,15 +25,17 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
-    # 消息总线（MQTT / ZMQ）
+    # MQTT 是唯一默认车云数据面；ZMQ 仅供显式启用的实验用途。
     mqtt_broker: str = "localhost"
     mqtt_port: int = 1884
-    mqtt_topic_prefix: str = "robot"
+    mqtt_topic_prefix: str = "robots"
     # ZMQ 发布端口
     zmq_pub_port: int = 5555
+    enable_zmq: bool = False
 
     # 默认机器人 ID（指令未指定 robot_id 时使用）
     default_robot_id: str = "car01"
+    command_timeout_seconds: float = 10.0
 
     # 机器人订阅的 ROS2 话题（由 gateway 转发）
     robot_topics: list[str] = [
@@ -43,11 +45,10 @@ class Settings(BaseSettings):
         "sdc/obstacle_count",
         "simulation/markers",
         "sensor/lidar",
+        "sdc/odometry",
     ]
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
 @lru_cache

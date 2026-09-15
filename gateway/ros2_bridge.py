@@ -27,6 +27,11 @@
 import argparse
 import json
 import logging
+import threading
+import time
+from itertools import count
+
+from robot_contracts import CommandStatus, MessageType, envelope, parse_envelope
 
 logger = logging.getLogger("ros2_bridge")
 
@@ -52,11 +57,8 @@ TOPIC_SCHEMA = {
     "sdc/front_distance": "Float64",
     "sdc/obstacle_count": "Float64",
     # 位姿（驱动地图上的车与轨迹；可按需扩展 odom/pose）
-    "sdc/x": "Float64",
-    "sdc/y": "Float64",
-    "sdc/heading": "Float64",
-    "simulation/markers": "MarkerArray",
-    "sensor/lidar": "PointCloud2",
+    "sdc/odometry": "Odometry",
+    # RViz Marker 和原始 PointCloud2 不进入车云链路；云端只消费领域状态。
 }
 
 # 云端 command 主题 → 机器人侧 ROS2 话题（下行）
@@ -70,7 +72,7 @@ COMMAND_SCHEMA = {
 # Backend /api/control 的 action 名 → command 主题后缀（扁平指令兼容）
 ACTION_ALIAS = {
     "set_control_algo": "control_algo",
-    "toggle_pause": "pause",
+    "set_paused": "pause",
 }
 
 
@@ -86,6 +88,24 @@ def extract_value(msg, msg_type: str):
             "width": getattr(msg, "width", 0),
             "height": getattr(msg, "height", 0),
             "point_step": getattr(msg, "point_step", 0),
+        }
+    if msg_type == "Odometry":
+        import math
+        q = msg.pose.pose.orientation
+        yaw = math.atan2(
+            2.0 * (q.w * q.z + q.x * q.y),
+            1.0 - 2.0 * (q.y * q.y + q.z * q.z),
+        )
+        return {
+            "pose": {
+                "x": msg.pose.pose.position.x,
+                "y": msg.pose.pose.position.y,
+                "yaw": yaw,
+            },
+            "velocity": {
+                "linear": msg.twist.twist.linear.x,
+                "angular": msg.twist.twist.angular.z,
+            },
         }
     return str(msg)
 
@@ -125,12 +145,13 @@ class CommandForwarder:
         """
         self.robot_id = robot_id
         self.ros_publishers = ros_publishers
+        self._processed: set[str] = set()
 
-    def _publish_ros(self, ros_topic: str, msg_type: str, value) -> None:
+    def _publish_ros(self, ros_topic: str, msg_type: str, value) -> bool:
         pub = self.ros_publishers.get(ros_topic)
         if pub is None:
             logger.warning("未找到 ROS2 发布器，忽略指令: %s", ros_topic)
-            return
+            return False
         # 根据消息类型构造 ROS2 消息
         from std_msgs.msg import Bool, Int32
 
@@ -142,46 +163,53 @@ class CommandForwarder:
             msg.data = int(value)
         else:  # 兜底
             logger.warning("不支持的指令消息类型: %s", msg_type)
-            return
+            return False
         pub.publish(msg)
         logger.info("下行指令已转发到 ROS2: %s = %s", ros_topic, msg.data)
+        return True
 
-    def handle_command(self, command_topic: str, payload: dict) -> None:
+    def handle_command(self, command_topic: str, payload: dict) -> tuple[str, str | None]:
         """处理一条来自总线的 command 指令。"""
         cmd, value = parse_command_payload(payload)
         if not cmd:
             logger.warning("无法解析指令主题: %s payload=%s", command_topic, payload)
-            return
+            return CommandStatus.REJECTED.value, "missing action"
 
-        # 兼容 Backend 的 action 名（set_control_algo/toggle_pause）
+        # 兼容 Backend 的领域 action 名（如 set_control_algo/set_paused）
         cmd = ACTION_ALIAS.get(cmd, cmd)
 
         spec = COMMAND_SCHEMA.get(cmd)
         if spec is None:
             logger.warning("未知指令: %s（已支持: %s）", cmd, list(COMMAND_SCHEMA))
-            return
+            return CommandStatus.REJECTED.value, f"unknown command: {cmd}"
 
         ros_topic, msg_type, require_value = spec
         if require_value and value is None:
             logger.warning("指令 %s 缺少 value", cmd)
-            return
+            return CommandStatus.REJECTED.value, "missing value"
         if not require_value and value is None:
             # 例如 clear_trail 只发触发信号，默认 True
             value = True
 
-        self._publish_ros(ros_topic, msg_type, value)
+        ok = self._publish_ros(ros_topic, msg_type, value)
+        return (CommandStatus.SUCCEEDED.value if ok else CommandStatus.FAILED.value,
+                None if ok else "ROS publisher unavailable")
 
 
 def build_bridge(robot_id: str, mqtt_broker: str, mqtt_port: int,
-                 zmq_port: int, command_forwarder: CommandForwarder):
+                 zmq_port: int, command_forwarder: CommandForwarder,
+                 enable_zmq: bool = False):
     """创建桥接回调（上行发布 + 下行订阅）。
 
     返回 (on_ros_topic, mqtt_client, zmq_pub, zmq_context, zmq_rep)
     """
-    if not HAS_MQTT and not HAS_ZMQ:
-        raise RuntimeError("需要安装 paho-mqtt 或 pyzmq 之一")
+    if not HAS_MQTT:
+        raise RuntimeError("MQTT 是车云数据面，需要安装 paho-mqtt")
+    if enable_zmq and not HAS_ZMQ:
+        raise RuntimeError("已请求实验性 ZMQ 通道，但未安装 pyzmq")
 
     mqtt_client = None
+    sequence = count(1)
     if HAS_MQTT:
         mqtt_client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2
@@ -191,7 +219,7 @@ def build_bridge(robot_id: str, mqtt_broker: str, mqtt_port: int,
 
     zmq_pub = None
     zmq_context = None
-    if HAS_ZMQ:
+    if enable_zmq:
         zmq_context = zmq.Context()
         zmq_pub = zmq_context.socket(zmq.PUB)
         zmq_pub.bind(f"tcp://*:{zmq_port}")
@@ -200,16 +228,16 @@ def build_bridge(robot_id: str, mqtt_broker: str, mqtt_port: int,
     def on_ros_topic(topic: str, msg_type: str):
         def callback(msg):
             payload = {
-                "robot_id": robot_id,
-                "topic": topic,
-                "type": msg_type,
-                "mode": "real",  # 实车模式数据标识
-                "data": extract_value(msg, msg_type),
+                "name": topic,
+                "ros_type": msg_type,
+                "value": extract_value(msg, msg_type),
             }
-            text = json.dumps(payload)
+            message = envelope(robot_id, MessageType.TELEMETRY, payload,
+                               sequence=next(sequence))
+            text = json.dumps(message)
             # 发布到 MQTT
             if mqtt_client is not None:
-                mqtt_client.publish(f"robot/{robot_id}/{topic}", text)
+                mqtt_client.publish(f"robots/{robot_id}/telemetry", text)
             # 发布到 ZMQ（topic 帧 + payload 帧）
             if zmq_pub is not None:
                 zmq_pub.send_string(f"robot/{robot_id}/{topic}", zmq.SNDMORE)
@@ -219,25 +247,46 @@ def build_bridge(robot_id: str, mqtt_broker: str, mqtt_port: int,
     # ---- 下行：总线 command → ROS2 话题 ----
     if mqtt_client is not None:
         # 订阅本机器人所有 command 主题
-        command_topic = f"robot/{robot_id}/command/#"
+        command_topic = f"robots/{robot_id}/commands"
 
         def on_command_message(client, userdata, msg):
             try:
-                payload = json.loads(msg.payload.decode("utf-8"))
+                message = parse_envelope(json.loads(msg.payload.decode("utf-8")))
             except Exception as e:  # noqa: BLE001
                 logger.error("解析下行指令失败: %s", e)
                 return
-            logger.info("收到下行指令: %s -> %s", msg.topic, payload)
-            command_forwarder.handle_command(msg.topic, payload)
+            command_id = message["message_id"]
+            expires_at = message["payload"].get("expires_at")
+            if expires_at is not None and time.time() > expires_at:
+                status, detail = CommandStatus.EXPIRED.value, "command expired before dispatch"
+            elif command_id in command_forwarder._processed:
+                status, detail = CommandStatus.SUCCEEDED.value, "duplicate ignored"
+            else:
+                command_forwarder._processed.add(command_id)
+                status, detail = command_forwarder.handle_command(msg.topic, message["payload"])
+            ack = envelope(robot_id, MessageType.COMMAND_ACK, {
+                "command_id": command_id, "status": status, "detail": detail,
+            }, sequence=next(sequence))
+            mqtt_client.publish(f"robots/{robot_id}/command_ack", json.dumps(ack), qos=1)
 
         mqtt_client.message_callback_add(
-            f"robot/{robot_id}/command/+", on_command_message
+            command_topic, on_command_message
         )
         mqtt_client.subscribe(command_topic)
         logger.info("已订阅下行指令主题: %s", command_topic)
 
+        def heartbeat_loop():
+            while True:
+                heartbeat = envelope(robot_id, MessageType.HEARTBEAT, {},
+                                     sequence=next(sequence))
+                mqtt_client.publish(f"robots/{robot_id}/heartbeat",
+                                    json.dumps(heartbeat), qos=1)
+                time.sleep(2.0)
+
+        threading.Thread(target=heartbeat_loop, daemon=True).start()
+
     zmq_rep = None
-    if HAS_ZMQ:
+    if enable_zmq:
         # ZMQ 下行通道使用 REP，监听 zmq_port + 1
         rep_port = zmq_port + 1
         zmq_rep = zmq_context.socket(zmq.REP)
@@ -258,7 +307,6 @@ def build_bridge(robot_id: str, mqtt_broker: str, mqtt_port: int,
                     except Exception:  # noqa: BLE001
                         pass
 
-        import threading
         threading.Thread(target=zmq_command_loop, daemon=True).start()
 
     return on_ros_topic, mqtt_client, zmq_pub, zmq_context, zmq_rep
@@ -271,14 +319,15 @@ def main():
     parser.add_argument("--mqtt-broker", default="localhost")
     parser.add_argument("--mqtt-port", type=int, default=1884)
     parser.add_argument("--zmq-port", type=int, default=5555)
+    parser.add_argument("--enable-zmq", action="store_true",
+                        help="显式启用实验性 ZMQ 通道（默认仅使用 MQTT）")
     args = parser.parse_args()
 
     # 动态导入 ROS2（避免无 ROS2 环境下 import 失败）
     import rclpy
     from rclpy.node import Node
     from std_msgs.msg import Float64, Int32, Bool
-    from visualization_msgs.msg import MarkerArray
-    from sensor_msgs.msg import PointCloud2
+    from nav_msgs.msg import Odometry
 
     rclpy.init()
     node = Node(f"robot_bridge_{args.robot_id}")
@@ -287,8 +336,7 @@ def main():
         "Float64": Float64,
         "Int32": Int32,
         "Bool": Bool,
-        "MarkerArray": MarkerArray,
-        "PointCloud2": PointCloud2,
+        "Odometry": Odometry,
     }
 
     # ---- 下行：创建 ROS2 发布器（供 CommandForwarder 使用）----
@@ -304,7 +352,7 @@ def main():
 
     on_ros_topic, mqtt_client, zmq_pub, zmq_context, zmq_rep = build_bridge(
         args.robot_id, args.mqtt_broker, args.mqtt_port, args.zmq_port,
-        command_forwarder,
+        command_forwarder, args.enable_zmq,
     )
 
     # ---- 上行：订阅 ROS2 话题并转发到总线 ----

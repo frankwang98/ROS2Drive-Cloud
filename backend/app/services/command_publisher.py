@@ -1,6 +1,6 @@
 """下行指令发布器。
 
-将 Backend 收到的控制指令发布到消息总线（MQTT 主通道 / ZMQ 备用），
+将 Backend 收到的控制指令发布到 MQTT；ZMQ 仅为显式启用的实验兼容通道，
 由 gateway 订阅后转发为 ROS2 话题，最终下发到 ros2_car 机器人侧。
 
 支持 paho-mqtt / pyzmq；对应通道不可用时降级为记录日志（仅 MQTT）。
@@ -10,9 +10,12 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
+from itertools import count
 from typing import Optional
 
 from app.core.config import settings
+from robot_contracts import CommandStatus, MessageType, envelope
 
 logger = logging.getLogger("robot.command")
 
@@ -26,14 +29,16 @@ class CommandPublisher:
         self._zmq_context = None
         self._lock = threading.Lock()
         self._started = False
+        self._sequence = count(1)
 
     def start(self) -> None:
-        """建立 MQTT / ZMQ 下行通道。"""
+        """建立 MQTT 下行通道，并按配置启用实验性 ZMQ。"""
         with self._lock:
             if self._started:
                 return
             self._init_mqtt()
-            self._init_zmq()
+            if settings.enable_zmq:
+                self._init_zmq()
             self._started = True
 
     def _init_mqtt(self) -> None:
@@ -45,16 +50,17 @@ class CommandPublisher:
         self._mqtt_client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2
         )
+        self._mqtt_client.reconnect_delay_set(min_delay=1, max_delay=10)
         try:
-            self._mqtt_client.connect(
+            # 异步连接避免应用启动依赖 Broker 的瞬时就绪状态。
+            self._mqtt_client.connect_async(
                 settings.mqtt_broker, settings.mqtt_port, 60
             )
             self._mqtt_client.loop_start()
-            logger.info("指令发布器 MQTT 已连接 %s:%s",
+            logger.info("指令发布器 MQTT 正在连接 %s:%s",
                         settings.mqtt_broker, settings.mqtt_port)
         except Exception as e:  # noqa: BLE001
-            logger.warning("指令发布器 MQTT 连接失败: %s", e)
-            self._mqtt_client = None
+            logger.warning("指令发布器 MQTT 初始化失败: %s", e)
 
     def _init_zmq(self) -> None:
         try:
@@ -76,26 +82,28 @@ class CommandPublisher:
             logger.warning("指令发布器 ZMQ 初始化失败: %s", e)
             self._zmq_socket = None
 
-    def publish(self, robot_id: str, command: str, value=None) -> bool:
+    def publish(self, robot_id: str, command: str, value=None) -> dict:
         """发布一条控制指令。
 
         指令主题格式：robot/{robot_id}/command/{command}
         返回是否至少发布到了一个通道。
         """
-        topic = f"{settings.mqtt_topic_prefix}/{robot_id}/command/{command}"
-        payload = json.dumps({
-            "robot_id": robot_id,
-            "topic": topic,
-            "action": command,
-            "value": value,
-        })
+        topic = f"{settings.mqtt_topic_prefix}/{robot_id}/commands"
+        message = envelope(
+            robot_id, MessageType.COMMAND,
+            {"action": command, "value": value,
+             "expires_at": time.time() + settings.command_timeout_seconds},
+            sequence=next(self._sequence),
+        )
+        message["status"] = CommandStatus.CREATED.value
+        payload = json.dumps(message)
         published = False
 
         if self._mqtt_client is not None:
             try:
                 info = self._mqtt_client.publish(topic, payload, qos=1)
                 info.wait_for_publish(timeout=5)
-                published = True
+                published = info.rc == 0 and info.is_published()
                 logger.info("已经 MQTT 下发指令 %s -> %s", command, topic)
             except Exception as e:  # noqa: BLE001
                 logger.error("MQTT 下发指令失败: %s", e)
@@ -109,7 +117,8 @@ class CommandPublisher:
             except Exception as e:  # noqa: BLE001
                 logger.error("ZMQ 下发指令失败: %s", e)
 
-        return published
+        message["status"] = (CommandStatus.PUBLISHED if published else CommandStatus.FAILED).value
+        return message
 
     def stop(self) -> None:
         with self._lock:

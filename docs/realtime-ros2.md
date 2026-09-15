@@ -17,6 +17,15 @@
 
 ## 接入步骤
 
+推荐直接使用项目提供的一键入口：
+
+```bash
+# ros2_car 已在宿主机运行，且两侧 ROS_DOMAIN_ID 一致
+ROS_DOMAIN_ID=0 ./scripts/run_all.sh ros2
+```
+
+该命令启动 MQTT、Backend 和使用 host network 的 Gateway。Dashboard 位于 `http://localhost:8000/dashboard`。
+
 ### 1. 启动后端（实车模式）
 
 ```bash
@@ -31,18 +40,17 @@ ROBOT_MODE=real uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ```bash
 source /opt/ros/humble/setup.bash
-cd gateway
-python3 ros2_bridge.py --robot-id car01 \
+cd robot_platform
+pip install ./robot_contracts -r gateway/requirements.txt
+python3 gateway/ros2_bridge.py --robot-id car01 \
     --mqtt-broker <backend-host> --mqtt-port 1884 --zmq-port 5555
 ```
 
 - `ros2_bridge.py` 订阅 `sdc/speed`、`sdc/action_id`、`sdc/front_distance`、`sdc/obstacle_count`、
-  `sdc/x`、`sdc/y`、`sdc/heading`、`simulation/markers`、`sensor/lidar` 等话题，
-  转换为统一 JSON 后经 MQTT/ZMQ 推送到云端 Backend（上行数据带 `mode=real`）。
-- 同时订阅云端 `robot/{id}/command/*` 指令，转发为 ROS2 下行话题（`sdc/control_algo`、`sdc/pause`、`sdc/clear_trail`）。
+  `sdc/odometry`、`simulation/markers`、`sensor/lidar` 等话题，转换为 Envelope v1 后经 MQTT 推送到 Backend。
+- 同时订阅云端 `robots/{id}/commands`，转发为 ROS2 下行话题，并在 `command_ack` 返回执行结果。
 
-> 若 `ros2_car` 使用 `odom` / `pose` 话题而非 `sdc/x/y/heading`，
-> 可在 `ros2_bridge.py` 的 `TOPIC_SCHEMA` 中扩展映射（Backend 的 `POSITION_TOPICS` 已兼容 `pose/*`、`odom/*`）。
+> 当前标准接口是 `sdc/odometry`（`nav_msgs/Odometry`）。旧的拆分坐标字段只作为 Backend 兼容读取，不应再由新车端发布。
 
 ### 3. 打开 Dashboard
 
@@ -55,11 +63,9 @@ python3 ros2_bridge.py --robot-id car01 \
 
 | 话题 | 类型 | 含义 |
 |------|------|------|
-| `sdc/x` | Float64 | X 坐标（米） |
-| `sdc/y` | Float64 | Y 坐标（米） |
-| `sdc/heading` | Float64 | 车头朝向（弧度，0 指向 +X） |
+| `sdc/odometry` | nav_msgs/Odometry | 位姿、线速度与角速度 |
 
-Backend 会在收到 x/y 时自动累积轨迹（最多 500 点），供地图绘制与「清除轨迹」使用。
+Backend 从 Odometry 原子更新位姿，并自动累积轨迹（最多 500 点），供地图绘制与「清除轨迹」使用。
 
 ## 注意事项
 

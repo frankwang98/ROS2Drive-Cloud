@@ -22,3 +22,17 @@ def test_state_store_basic():
 
     assert store.get_topic("sdc/speed") == 2.4
     assert store.get_topic("unknown") is None
+
+
+def test_odometry_updates_pose_and_one_trail_point():
+    from app.services.robot_state import RobotStateStore
+
+    store = RobotStateStore()
+    odometry = {
+        "pose": {"x": 1.25, "y": -2.5, "yaw": 0.75},
+        "velocity": {"linear": 2.0, "angular": 0.1},
+    }
+    store.update_topic("sdc/odometry", odometry)
+
+    assert store.get_pose() == {"x": 1.25, "y": -2.5, "heading": 0.75}
+    assert store.get_trail() == [(1.25, -2.5)]

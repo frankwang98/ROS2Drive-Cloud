@@ -9,8 +9,9 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: robot-backend
-  minReplicas: 2
-  maxReplicas: 10
+  # 暂停水平扩容，直到 Backend 状态外置到 Redis。
+  minReplicas: 1
+  maxReplicas: 1
   metrics:
     - type: Resource
       resource:

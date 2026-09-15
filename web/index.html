@@ -1,94 +1,64 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Robot Cloud Platform · Web Dashboard</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vehicle Dashboard</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar">
-    <h1>🤖 Robot Cloud Platform</h1>
-    <div class="topbar-right">
-      <div class="mode-switch" id="mode-switch">
-        <button class="mode-btn active" data-mode="simulation">🧪 仿真模式</button>
-        <button class="mode-btn" data-mode="real">🚗 实车模式</button>
-      </div>
-      <div class="conn" id="conn-status">连接中…</div>
-    </div>
+  <header>
+    <div><h1>Vehicle Dashboard</h1><p>ROS2 · Gateway · MQTT · Cloud</p></div>
+    <div class="connection"><span id="ws-dot" class="dot"></span><span id="ws-status">连接云端…</span></div>
   </header>
 
-  <main class="layout">
-    <!-- 左列：实时状态 + 远程控制 -->
-    <div class="col-left">
-      <!-- 实时状态卡片 -->
-      <section class="card" id="status-card">
-        <h2>实时状态 <span class="badge" id="mode-badge">仿真</span></h2>
-        <div class="stats">
-          <div class="stat">
-            <span class="label">速度</span>
-            <span class="value" id="speed">--</span><span class="unit">m/s</span>
-          </div>
-          <div class="stat">
-            <span class="label">行为</span>
-            <span class="value" id="action">--</span>
-          </div>
-          <div class="stat">
-            <span class="label">前方距离</span>
-            <span class="value" id="front-distance">--</span><span class="unit">m</span>
-          </div>
-          <div class="stat">
-            <span class="label">障碍物</span>
-            <span class="value" id="obstacle-count">--</span>
-          </div>
-        </div>
-        <div class="speed-bar">
-          <div class="speed-fill" id="speed-fill"></div>
-        </div>
-        <div class="pose-line" id="pose-line">位置: -- / 朝向: --</div>
-      </section>
+  <main>
+    <section class="identity card">
+      <div><span class="label">机器人</span><strong id="robot-id">car01</strong></div>
+      <div><span class="label">车辆连接</span><strong id="robot-status" class="offline">OFFLINE</strong></div>
+      <div><span class="label">最后上报</span><strong id="last-seen">--</strong></div>
+      <div><span class="label">消息状态</span><strong id="message-status">等待 Telemetry</strong></div>
+    </section>
 
-      <!-- 远程控制 -->
-      <section class="card" id="control-card">
-        <h2>远程控制</h2>
+    <section class="metrics">
+      <article class="metric card"><span>速度</span><strong id="speed">--</strong><small>m/s</small></article>
+      <article class="metric card"><span>驾驶行为</span><strong id="action">--</strong></article>
+      <article class="metric card"><span>前方距离</span><strong id="front-distance">--</strong><small>m</small></article>
+      <article class="metric card"><span>障碍物</span><strong id="obstacle-count">--</strong><small>个</small></article>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>车辆状态</h2>
+        <dl class="details">
+          <dt>X</dt><dd id="pose-x">--</dd>
+          <dt>Y</dt><dd id="pose-y">--</dd>
+          <dt>Yaw</dt><dd id="pose-yaw">--</dd>
+          <dt>线速度</dt><dd id="linear-velocity">--</dd>
+          <dt>角速度</dt><dd id="angular-velocity">--</dd>
+          <dt>轨迹点数</dt><dd id="trail-count">0</dd>
+        </dl>
+      </article>
+
+      <article class="card">
+        <h2>车辆控制</h2>
         <div class="controls">
-          <div class="control-group">
-            <label>控制算法</label>
-            <select id="algo-select">
-              <option value="0">PID</option>
-              <option value="1">Bang-Bang</option>
-              <option value="2">Ramp</option>
-            </select>
-            <button onclick="sendAlgo()">切换</button>
-          </div>
-          <div class="control-group">
-            <button onclick="togglePause()" id="pause-btn">暂停仿真</button>
-            <button onclick="clearTrail()">清除轨迹</button>
-          </div>
+          <label>速度控制算法
+            <select id="algo-select"><option value="0">PID</option><option value="1">Bang-Bang</option><option value="2">Ramp</option></select>
+          </label>
+          <button id="algo-btn">应用算法</button>
+          <button id="pause-btn">暂停车辆</button>
+          <button id="clear-btn">清除轨迹</button>
         </div>
-      </section>
+        <div id="command-result" class="command-result">尚未下发命令</div>
+      </article>
+    </section>
 
-      <!-- 消息监控 -->
-      <section class="card" id="message-card">
-        <h2>消息监控 <small>(最近 20 条)</small></h2>
-        <ul class="log" id="log"></ul>
-      </section>
-    </div>
-
-    <!-- 右列：地图可视化 -->
-    <div class="col-right">
-      <section class="card" id="map-card">
-        <h2>🗺️ 地图 & 车辆</h2>
-        <canvas id="map-canvas" width="640" height="640"></canvas>
-        <div class="map-legend">
-          <span><i class="dot car-dot"></i> 车辆</span>
-          <span><i class="dot trail-dot"></i> 轨迹</span>
-          <span><i class="dot obst-dot"></i> 障碍物</span>
-        </div>
-      </section>
-    </div>
+    <section class="card">
+      <h2>实时 Telemetry <small>最近收到的领域数据</small></h2>
+      <table><thead><tr><th>名称</th><th>值</th><th>更新时间</th></tr></thead><tbody id="telemetry-body"></tbody></table>
+    </section>
   </main>
-
   <script src="app.js"></script>
 </body>
 </html>

@@ -15,6 +15,7 @@ import json
 import logging
 
 import paho.mqtt.client as mqtt
+from robot_contracts import CommandStatus, MessageType, envelope, parse_envelope
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mock_robot")
@@ -27,7 +28,8 @@ def main():
     parser.add_argument("--robot-id", default="car01")
     args = parser.parse_args()
 
-    topic = f"robot/{args.robot_id}/command/#"
+    topic = f"robots/{args.robot_id}/commands"
+    sequence = 0
     logger.info("Mock 机器人订阅下行指令: %s (%s:%s)",
                 topic, args.mqtt_broker, args.mqtt_port)
 
@@ -39,13 +41,21 @@ def main():
         client.subscribe(topic)
 
     def on_message(client, userdata, msg):
+        nonlocal sequence
         try:
-            payload = json.loads(msg.payload.decode("utf-8"))
+            message = parse_envelope(json.loads(msg.payload.decode("utf-8")))
         except Exception:  # noqa: BLE001
             logger.info("[收到原始指令] %s -> %s", msg.topic, msg.payload.decode())
             return
         logger.info("[收到下行指令] %s -> action=%s value=%s",
-                    msg.topic, payload.get("action"), payload.get("value"))
+                    msg.topic, message["payload"].get("action"), message["payload"].get("value"))
+        sequence += 1
+        ack = envelope(args.robot_id, MessageType.COMMAND_ACK, {
+            "command_id": message["message_id"],
+            "status": CommandStatus.SUCCEEDED.value,
+            "detail": "mock robot accepted command",
+        }, sequence=sequence)
+        client.publish(f"robots/{args.robot_id}/command_ack", json.dumps(ack), qos=1)
 
     client.on_connect = on_connect
     client.on_message = on_message

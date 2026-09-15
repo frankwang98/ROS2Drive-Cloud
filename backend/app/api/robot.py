@@ -1,9 +1,36 @@
 """机器人状态 REST API。"""
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.services.robot_state import state_store
+from app.services.robot_registry import robot_registry
+from app.api.control import ControlCommand, control
 
 router = APIRouter(prefix="/api/robot", tags=["robot"])
+v1_router = APIRouter(prefix="/api/v1/robots", tags=["robots-v1"])
+
+
+@v1_router.get("")
+def list_robots():
+    return {"robots": robot_registry.robots()}
+
+
+@v1_router.get("/{robot_id}")
+def get_robot(robot_id: str):
+    return robot_registry.robot(robot_id)
+
+
+@v1_router.get("/{robot_id}/commands/{command_id}")
+def get_command(robot_id: str, command_id: str):
+    command = robot_registry.command(command_id)
+    if command is None or command.get("robot_id") != robot_id:
+        raise HTTPException(status_code=404, detail="command not found")
+    return command
+
+
+@v1_router.post("/{robot_id}/commands")
+def create_command(robot_id: str, command: ControlCommand):
+    command.robot_id = robot_id
+    return control(command)
 
 
 @router.get("/status")

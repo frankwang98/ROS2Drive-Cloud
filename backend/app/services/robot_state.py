@@ -1,7 +1,7 @@
 """机器人实时状态管理器。
 
 负责：
-- 维护每个机器人的最新状态快照（来自 MQTT/ZMQ 消息）
+- 维护机器人最新状态快照（来自 MQTT；ZMQ 仅为实验兼容）
 - 维护运行模式（simulation / real）与机器人位姿（x/y/heading）+ 轨迹
 - 作为 WebSocket 广播的数据源
 - 提供 REST API 读取当前状态
@@ -86,6 +86,18 @@ class RobotStateStore:
 
     def _maybe_update_pose(self, topic: str, payload: Any) -> None:
         """根据位置话题更新位姿（x/y/heading）。"""
+        if topic == "sdc/odometry" and isinstance(payload, dict):
+            pose = payload.get("pose", {})
+            try:
+                self._pose.update({
+                    "x": float(pose["x"]),
+                    "y": float(pose["y"]),
+                    "heading": float(pose["yaw"]),
+                })
+            except (KeyError, TypeError, ValueError):
+                return
+            self._append_trail_point()
+            return
         if topic in POSITION_TOPICS:
             try:
                 val = float(payload)
@@ -94,13 +106,15 @@ class RobotStateStore:
             key = POSITION_TOPICS[topic]
             self._pose[key] = val
             if key in ("x", "y"):
-                # 追加轨迹点（去重连续重复点）
-                last = self._trail[-1] if self._trail else None
-                if last is None or (abs(last[0] - self._pose["x"]) > 0.01 or
-                                    abs(last[1] - self._pose["y"]) > 0.01):
-                    self._trail.append((self._pose["x"], self._pose["y"]))
-                    if len(self._trail) > self._MAX_TRAIL:
-                        self._trail = self._trail[-self._MAX_TRAIL:]
+                self._append_trail_point()
+
+    def _append_trail_point(self) -> None:
+        last = self._trail[-1] if self._trail else None
+        point = (self._pose["x"], self._pose["y"])
+        if last is None or abs(last[0] - point[0]) > 0.01 or abs(last[1] - point[1]) > 0.01:
+            self._trail.append(point)
+            if len(self._trail) > self._MAX_TRAIL:
+                self._trail = self._trail[-self._MAX_TRAIL:]
 
     def clear_trail(self) -> None:
         """清空轨迹。"""

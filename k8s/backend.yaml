@@ -7,7 +7,8 @@ metadata:
   labels:
     app: robot-backend
 spec:
-  replicas: 2
+  # Backend 当前使用进程内状态；完成 Redis 共享状态前必须保持单副本。
+  replicas: 1
   selector:
     matchLabels:
       app: robot-backend

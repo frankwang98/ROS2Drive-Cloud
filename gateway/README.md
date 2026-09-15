@@ -1,6 +1,6 @@
-# Gateway — ROS2 ⇄ MQTT/ZMQ 桥接层
+# Vehicle Gateway — ROS2 ⇄ MQTT
 
-作用：连接 `ros2_car` 机器人（ROS2 话题）与云端消息总线（MQTT/ZMQ），
+作用：连接 `ros2_car` 机器人（ROS2 话题）与云端消息总线（MQTT），
 既是 **上行**（机器人状态 → 云端）桥接，也是 **下行**（云端指令 → 机器人）转发。
 
 ## 数据流
@@ -12,15 +12,13 @@ ROS2 topics (sdc/speed, sdc/action_id, sdc/front_distance, ...)
       ↓ 订阅
 gateway 将消息转换为统一 JSON
       ↓ 发布
-MQTT topic: robot/{robot_id}/sdc/speed
-ZMQ PUB :   tcp://*:5555
+MQTT topic: robots/{robot_id}/telemetry
 ```
 
 **下行（云端指令 → 机器人）：**
 
 ```
-MQTT topic: robot/{robot_id}/command/control_algo
-ZMQ REP :   tcp://*:5556
+MQTT topic: robots/{robot_id}/commands
       ↓ 订阅 / 接收
 gateway 解析指令并转换为 ROS2 消息
       ↓ 发布
@@ -39,8 +37,7 @@ ROS2 topics (sdc/control_algo, sdc/pause, sdc/clear_trail)
 
 ## 位姿与地图
 
-模拟器会发布位姿话题 `sdc/x` / `sdc/y` / `sdc/heading`，驱动 Web Dashboard 上的车辆位置、朝向与轨迹。
-实车模式下，`ros2_bridge.py` 同样桥接这三个话题（若 ros2_car 发布 `odom`/`pose` 亦可扩展映射）。
+模拟器和实车 Gateway 都发布完整 `sdc/odometry` 数据，驱动 Web Dashboard 的车辆位置、朝向与轨迹。
 
 ## 运行
 
@@ -62,8 +59,8 @@ python3 ros2_bridge.py --robot-id car01 \
 
 ## 下行指令映射
 
-| command 主题 | ROS2 话题 | 类型 | 说明 |
-|------|------|------|------|
-| `robot/{id}/command/control_algo` | `sdc/control_algo` | Int32 | 切换控制算法 |
-| `robot/{id}/command/pause` | `sdc/pause` | Bool | 暂停/继续 |
-| `robot/{id}/command/clear_trail` | `sdc/clear_trail` | Bool | 清除轨迹 |
+| command action | ROS2 话题 | 类型 | 说明 |
+|---|---|---|---|
+| `control_algo` | `sdc/control_algo` | Int32 | 切换控制算法 |
+| `pause` | `sdc/pause` | Bool | 明确设置暂停状态 |
+| `clear_trail` | `sdc/clear_trail` | Bool | 清除轨迹 |

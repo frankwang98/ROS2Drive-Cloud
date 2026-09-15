@@ -7,6 +7,34 @@
 
 > 🎯 培养方向：**机器人系统 + 云原生**
 
+## 当前推荐运行拓扑
+
+```text
+本地进程                         Docker（仅 2 个容器）
+┌──────────────┐   ROS2          ┌──────────────┐
+│ ros2_car     │ ─────────────→  │              │
+└──────────────┘                 │              │
+        ↑                        │              │
+        │ ROS2                   │              │
+┌───────┴──────┐   MQTT          │ MQTT Broker  │
+│ Python       │ ─────────────→  │ :1884        │
+│ Gateway      │ ←─────────────  │              │
+└──────────────┘                 └──────┬───────┘
+                                       │ MQTT
+                                ┌──────▼───────┐
+                                │ Backend      │
+                                │ + Frontend   │
+                                │ :8000        │
+                                └──────────────┘
+```
+
+- `ros2_car`：本地 ROS2 自动驾驶仿真和 RViz。
+- `gateway`：本地 Python 进程，读取 ROS2 状态、发送 MQTT，并把云端命令转回 ROS2。
+- `mqtt-broker`：Docker 容器。
+- `backend`：Docker 容器；同时托管 REST、WebSocket 和静态 Frontend，因此不需要单独前端容器。
+
+Simulator、Mock Robot 和容器化 Gateway 只保留为测试 profile，不属于默认启动路径。
+
 ---
 
 ## 🏗️ 整体架构
@@ -20,9 +48,9 @@
                            ▼
 ┌────────────────────────────────────────────────────────────┐
 │                  Gateway (消息桥接，Python)                 │
-│   ROS2 topics  ⇄  MQTT / ZMQ  ⇄  JSON 统一数据模型          │
+│   ROS2 topics  ⇄  MQTT  ⇄  JSON 统一数据模型                │
 └──────────────────────────┬─────────────────────────────────┘
-                           │  MQTT / ZMQ (主题消息)
+                           │  MQTT (主题消息)
                            ▼
 ┌────────────────────────────────────────────────────────────┐
 │                   Backend (FastAPI, Python)                │
@@ -41,7 +69,7 @@
 └────────────────────────────────────────────────────────────┘
 ```
 
-**数据流链路**：`ROS2 → MQTT/ZMQ → Backend → Kubernetes → Web Dashboard`
+**数据流链路**：`ROS2 → MQTT → Backend → Kubernetes → Web Dashboard`
 
 ---
 
@@ -54,7 +82,7 @@
 │       ├── api/             # REST / WebSocket 接口
 │       ├── core/            # 配置、依赖
 │       └── services/        # 业务服务（消息消费、状态管理）
-├── gateway/                 # ROS2 ⇄ MQTT/ZMQ 消息桥接（Python）
+├── gateway/                 # ROS2 ⇄ MQTT 消息桥接（Python）
 ├── k8s/                     # Kubernetes 部署清单
 ├── web/                     # Web Dashboard 前端
 ├── docker/                  # 容器化配置（Dockerfile）
@@ -69,15 +97,60 @@
 
 | 层 | 技术 |
 |----|------|
-| 机器人 | ROS2（Humble，来自 `ros2_car`）|
-| 消息总线 | MQTT / ZMQ |
+| 机器人 | ROS2 Jazzy（来自 `ros2_car`）|
+| 消息总线 | MQTT（ZMQ 仅保留为实验兼容选项）|
 | 后端 | Python · FastAPI · WebSocket · uvicorn |
 | 云原生 | Kubernetes · Docker |
-| 前端 | Web Dashboard（React + ROSlib / WebSocket）|
+| 前端 | 原生 HTML/CSS/JavaScript + WebSocket |
 
 ---
 
 ## 🚀 快速开始
+
+### 一键运行完整车云链路
+
+推荐按三个终端启动。
+
+首次准备 Gateway：
+
+```bash
+cd /home/ubuntu/dev/frank_ws/robot_platform
+./scripts/setup_gateway_local.sh
+```
+
+终端 1，启动两个云端容器：
+
+```bash
+./scripts/run_cloud.sh
+```
+
+终端 2，启动本地小车：
+
+```bash
+ROS_DOMAIN_ID=0 ./scripts/run_car_local.sh
+```
+
+终端 3，启动本地 Gateway：
+
+```bash
+ROS_DOMAIN_ID=0 ./scripts/run_gateway_local.sh
+```
+
+打开 `http://localhost:8000/dashboard/`。详细检查见 [本地车云联调](docs/local-stack.md)。
+
+以下 Mock 模式仅用于没有 ROS2 时测试协议：
+
+无需 ROS2，使用 Simulator + Mock Robot 验证完整链路：
+
+```bash
+./scripts/run_all.sh mock
+python3 scripts/verify_e2e.py
+```
+
+验收覆盖：`Telemetry → Heartbeat → RobotRegistry → REST Command → MQTT → Mock Robot → ACK`。
+Dashboard 地址：`http://localhost:8000/dashboard`。
+
+Mock 的完整检查项见 [协议 E2E 手册](docs/integration-testing.md)。日常开发只需使用上面的本地三终端方式。
 
 ### 运行模式（仿真 / 实车）
 
@@ -135,7 +208,7 @@ curl -X POST http://localhost:8000/api/control \
 # 暂停仿真
 curl -X POST http://localhost:8000/api/control \
   -H 'Content-Type: application/json' \
-  -d '{"action":"toggle_pause","value":true}'
+  -d '{"action":"set_paused","value":true}'
 ```
 
 ### 完整链路（容器化）
@@ -170,11 +243,11 @@ kubectl apply -f k8s/
 - `/sdc/control_algo` —— 控制算法切换
 - `/sdc/pause` —— 暂停/继续
 
-Gateway 将这些 ROS2 话题转换为统一 JSON 模型，通过 MQTT/ZMQ 推送到云端 Backend，最终呈现在 Web Dashboard 上。
+Gateway 将这些 ROS2 话题转换为统一 JSON 模型，通过 MQTT 推送到云端 Backend，最终呈现在 Web Dashboard 上。
 
 **下行（云端 → 机器人）：**
 
-Web Dashboard 远程控制 → Backend `/api/control` → 消息总线 `robot/{id}/command/*` →
+Web Dashboard 远程控制 → Backend `/api/v1/robots/{id}/commands` → MQTT `robots/{id}/commands` →
 Gateway 订阅并转发 → ROS2 话题（`sdc/control_algo` / `sdc/pause` / `sdc/clear_trail`）→ ros2_car 执行。
 
 > ros2_car 侧无需新增任何代码，只需保持发布/订阅上述 ROS2 话题即可。
@@ -185,6 +258,7 @@ Gateway 订阅并转发 → ROS2 话题（`sdc/control_algo` / `sdc/pause` / `sd
 
 - [架构设计](docs/architecture.md)
 - [消息协议](docs/protocol.md)
+- [车云消息协议 v1](docs/protocol-v1.md)
 - [Kubernetes 部署](docs/deployment.md)
 - [实车模式·接入本地 ROS2 实时数据](docs/realtime-ros2.md)
 

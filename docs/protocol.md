@@ -1,5 +1,7 @@
 # 消息协议
 
+> 本文是旧版逐 topic 协议存档。当前实现请参阅 [车云消息协议 v1](protocol-v1.md)。
+
 本文档定义 Robot Cloud Platform 各层之间的消息格式。
 
 ## 统一消息模型
@@ -38,9 +40,7 @@
 | `sdc/obstacle_count` | Float64 | 当前障碍物数量 |
 | `simulation/markers` | MarkerArray | 道路/环境可视化（含 marker_count）|
 | `sensor/lidar` | PointCloud2 | LIDAR 点云元信息（宽高/步长）|
-| `sdc/x` | Float64 | 车辆 X 坐标（米，驱动地图）|
-| `sdc/y` | Float64 | 车辆 Y 坐标（米，驱动地图）|
-| `sdc/heading` | Float64 | 车头朝向（弧度，驱动地图箭头）|
+| `sdc/odometry` | Odometry | 完整位姿与线/角速度；Gateway 转为 `{pose, velocity}` |
 
 ## 控制指令话题
 
@@ -49,7 +49,7 @@
 | 指令 | command 主题 | 机器人侧 ROS2 话题 | 类型 | 说明 |
 |------|------|------|------|------|
 | `set_control_algo` | `robot/{id}/command/control_algo` | `sdc/control_algo` | Int32 | 切换控制算法 (0/1/2) |
-| `toggle_pause` | `robot/{id}/command/pause` | `sdc/pause` | Bool | 暂停/继续仿真 |
+| `set_paused` | `robot/{id}/command/pause` | `sdc/pause` | Bool | 明确设置暂停状态 |
 | `clear_trail` | `robot/{id}/command/clear_trail` | `sdc/clear_trail` | Bool | 清除行驶轨迹 |
 
 ### 下行指令消息格式
@@ -72,8 +72,8 @@
 
 | 通道 | 用途 | 主题格式 |
 |------|------|----------|
-| MQTT | 主通道（可靠，持久化可选）| `robot/{robot_id}/{topic}` |
-| ZMQ  | 低延迟备用通道 | 上行 PUB `tcp://*:5555`，下行 REP `tcp://*:5556` |
+| MQTT | 默认且唯一的车云数据面 | `robot/{robot_id}/{topic}` |
+| ZMQ  | 实验性兼容通道，默认关闭 | 使用 `--enable-zmq` / `ENABLE_ZMQ=true` 显式启用 |
 
 ## WebSocket 推送协议
 
