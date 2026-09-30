@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vehicle Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div><h1>Vehicle Dashboard</h1><p>ROS2 · Gateway · MQTT · Cloud</p></div>
+    <div class="connection"><span id="ws-dot" class="dot"></span><span id="ws-status">连接云端…</span></div>
+  </header>
+
+  <main>
+    <section class="identity card">
+      <div><span class="label">机器人</span><strong id="robot-id">car01</strong></div>
+      <div><span class="label">车辆连接</span><strong id="robot-status" class="offline">OFFLINE</strong></div>
+      <div><span class="label">最后上报</span><strong id="last-seen">--</strong></div>
+      <div><span class="label">消息状态</span><strong id="message-status">等待 Telemetry</strong></div>
+    </section>
+
+    <section class="metrics">
+      <article class="metric card"><span>速度</span><strong id="speed">--</strong><small>m/s</small></article>
+      <article class="metric card"><span>驾驶行为</span><strong id="action">--</strong></article>
+      <article class="metric card"><span>前方距离</span><strong id="front-distance">--</strong><small>m</small></article>
+      <article class="metric card"><span>障碍物</span><strong id="obstacle-count">--</strong><small>个</small></article>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>车辆状态</h2>
+        <dl class="details">
+          <dt>X</dt><dd id="pose-x">--</dd>
+          <dt>Y</dt><dd id="pose-y">--</dd>
+          <dt>Yaw</dt><dd id="pose-yaw">--</dd>
+          <dt>线速度</dt><dd id="linear-velocity">--</dd>
+          <dt>角速度</dt><dd id="angular-velocity">--</dd>
+          <dt>轨迹点数</dt><dd id="trail-count">0</dd>
+        </dl>
+      </article>
+
+      <article class="card">
+        <h2>车辆控制</h2>
+        <div class="controls">
+          <label>速度控制算法
+            <select id="algo-select"><option value="0">PID</option><option value="1">Bang-Bang</option><option value="2">Ramp</option></select>
+          </label>
+          <button id="algo-btn">应用算法</button>
+          <button id="pause-btn">暂停车辆</button>
+          <button id="clear-btn">清除轨迹</button>
+        </div>
+        <div id="command-result" class="command-result">尚未下发命令</div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>实时 Telemetry <small>最近收到的领域数据</small></h2>
+      <table><thead><tr><th>名称</th><th>值</th><th>更新时间</th></tr></thead><tbody id="telemetry-body"></tbody></table>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
+

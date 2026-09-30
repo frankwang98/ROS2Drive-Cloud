@@ -1,3 +1,4 @@
+import {LiveAdapter} from "./live-adapter.js";
 // Scenario geometry is adapted from ROS2Drive/src/scenario at 2026-09-30.
 // Mock kinematics only: no ROS connection, collision avoidance or controller evaluation.
 const $ = id => document.getElementById(id);
@@ -46,11 +47,12 @@ export class MockAdapter{
  }}
  snapshot(){return{sceneId:this.sceneId,completed:this.completed,vehicles:this.vehicles.map(v=>({...v,...poseAt(this.scene,v.distance),speed:v.state==='RUNNING'&&v.mission==='ACTIVE'&&!v.hold?this.scene.speed:0,progress:v.distance/this.scene.length*100,updatedAt:Date.now()}))};}
 }
-// Future LiveAdapter should provide the same operations and snapshot contract.
+// Mock and live adapters share operations and the snapshot contract.
 // Browser MQTT/ROS integration and credentials are deliberately absent.
 if(typeof document!=='undefined'){
  let selected='CAR-01',logs=[],mapProject;
- const adapter=new MockAdapter(log);
+ let adapter=new MockAdapter(log);
+ let liveMode=false;
  function log(id,type,message){logs.unshift({time:new Date().toLocaleTimeString('zh-CN',{hour12:false}),id,type,message});logs=logs.slice(0,80);renderLogs();}
  function renderLogs(){if(!$('logs'))return;$('logs').replaceChildren(...logs.map(l=>{const tr=document.createElement('tr');for(const value of [l.time,l.id,l.type,l.message]){const td=document.createElement('td');td.textContent=value;tr.append(td);}return tr;}));}
  function svg(tag,attrs,parent,text){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,v);if(text)e.textContent=text;parent.append(e);return e;}
@@ -69,24 +71,33 @@ if(typeof document!=='undefined'){
   if(s.closed)for(const a of [.85,3,5.15]){const p=mapProject({x:24.5*Math.cos(a),y:24.5*Math.sin(a)});svg('rect',{x:p.x-5,y:p.y-5,width:10,height:10,rx:2,fill:'#ffcb75'},$('stations'));}
   svg('text',{x:24,y:485,class:'map-text'},$('terrain'),`${s.profile} / FollowRoute`);
   $('sceneTitle').textContent=s.name;$('sceneId').textContent=adapter.sceneId;$('mapCaption').textContent=`${s.name} · 参考路线`;$('sceneNote').textContent=s.note;$('source').href=`https://github.com/frankwang98/ROS2Drive/blob/main/src/scenario/${s.file}`;
-  $('fleet').replaceChildren(...adapter.vehicles.map(v=>{const b=document.createElement('button');b.className='vehicle';b.id=`fleet-${v.id}`;b.innerHTML=`<span class="vehicle-top"><b>${v.id}</b><span class="vehicle-status"></span></span><small></small>`;b.onclick=()=>{selected=v.id;$('feedback').textContent='操作仅作用于模拟车辆。';render();};return b;}));
+  $('fleet').replaceChildren(...adapter.vehicles.map(v=>{const b=document.createElement('button');b.className='vehicle';b.id=`fleet-${v.id}`;b.innerHTML=`<span class="vehicle-top"><b>${v.id}</b><span class="vehicle-status"></span></span><small></small>`;b.onclick=()=>{selected=v.id;$('feedback').textContent=liveMode?'操作将发送到所连接车辆。':'操作仅作用于模拟车辆。';render();};return b;}));
   for(const v of adapter.vehicles){const g=svg('g',{id:`map-${v.id}`},$('vehicles'));svg('circle',{r:17,fill:'#5be3b1',opacity:.12},g);svg('g',{class:'car-body'},g);svg('text',{x:14,y:-15,class:'vehicle-label'},g,v.id);}
  }
  function render(){const snap=adapter.snapshot(),v=snap.vehicles.find(v=>v.id===selected);
   $('clock').textContent=new Date().toLocaleTimeString('zh-CN',{hour12:false});$('active').textContent=String(snap.vehicles.filter(v=>v.mission==='ACTIVE').length).padStart(2,'0');$('completed').textContent=String(snap.completed).padStart(2,'0');$('faults').textContent=String(snap.vehicles.filter(v=>v.state==='ESTOP').length).padStart(2,'0');
-  for(const car of snap.vehicles){const b=$(`fleet-${car.id}`);b.classList.toggle('selected',car.id===selected);b.setAttribute('aria-pressed',car.id===selected);b.querySelector('.vehicle-status').textContent=car.state;b.querySelector('.vehicle-status').classList.toggle('fault',car.state==='ESTOP');b.querySelector('small').textContent=`${car.mission} · ${car.speed.toFixed(1)} m/s`;
+  for(const car of snap.vehicles){const b=$(`fleet-${car.id}`);b.classList.toggle('selected',car.id===selected);b.setAttribute('aria-pressed',car.id===selected);b.querySelector('.vehicle-status').textContent=car.state;b.querySelector('.vehicle-status').classList.toggle('fault',car.state==='ESTOP');b.querySelector('small').textContent=`${car.mission} · ${Number.isFinite(car.speed)?car.speed.toFixed(1):'—'} m/s`;
    const p=mapProject(car),g=$(`map-${car.id}`),color=car.state==='ESTOP'?'#ff9292':car.id===selected?'#5be3b1':'#7faeff';
    // Initial co-located cars get a small screen offset; telemetry remains unmodified.
    const offset=car.distance===0?(Number(car.id.at(-1))-1)*13:0;
+   g.style.display=car.poseValid===false?'none':'';
    g.setAttribute('transform',`translate(${p.x},${p.y+offset})`);const body=g.querySelector('.car-body');body.replaceChildren();body.setAttribute('transform',`rotate(${-car.yaw*180/Math.PI})`);svg('rect',{x:-10,y:-5,width:20,height:10,rx:3,fill:color,stroke:'#0b1521','stroke-width':2},body);svg('path',{d:'M3 -3 L7 0 L3 3',fill:'none',stroke:'#12352d','stroke-width':1.5},body);
   }
-  $('vehicleTitle').textContent=v.id;$('runtime').textContent=v.state;$('speed').textContent=v.speed.toFixed(1);$('position').textContent=`${v.x.toFixed(1)} / ${v.y.toFixed(1)} m`;$('heading').textContent=`${(v.yaw*180/Math.PI).toFixed(1)}°`;$('payload').textContent=v.payload;$('missionState').textContent=v.mission;$('missionName').textContent=`${adapter.scene.name} · FollowRoute`;$('phase').textContent=v.stage;$('percent').textContent=`${Math.floor(v.progress)}%`;$('progress').value=v.progress;$('missionId').textContent=v.missionId||'尚未下发任务';
+  $('vehicleTitle').textContent=v.id;$('runtime').textContent=v.state;$('speed').textContent=Number.isFinite(v.speed)?v.speed.toFixed(1):'—';$('position').textContent=v.poseValid===false?'—':`${v.x.toFixed(1)} / ${v.y.toFixed(1)} m`;$('heading').textContent=v.poseValid===false?'—':`${(v.yaw*180/Math.PI).toFixed(1)}°`;$('payload').textContent=v.payload;$('missionState').textContent=v.mission;$('missionName').textContent=`${adapter.scene.name} · FollowRoute`;$('phase').textContent=v.stage;$('percent').textContent=`${Math.floor(v.progress)}%`;$('progress').value=v.progress;$('missionId').textContent=v.missionId||'尚未下发任务';
   $('stages').replaceChildren(...adapter.scene.stages.map(t=>{const e=document.createElement('span');e.textContent=t;e.className=t===v.stage?'current':'';return e;}));
-  $('dispatch').disabled=['ACTIVE','PAUSED'].includes(v.mission)||v.state==='ESTOP';$('pause').disabled=!['ACTIVE','PAUSED'].includes(v.mission)||v.state==='ESTOP';$('pause').textContent=v.mission==='PAUSED'?'恢复':'暂停';$('cancel').disabled=!['ACTIVE','PAUSED'].includes(v.mission);$('estop').textContent=v.state==='ESTOP'?'复位急停':'模拟急停';
+  $('dispatch').disabled=['ACTIVE','PAUSED'].includes(v.mission)||v.state==='ESTOP';$('pause').disabled=!['ACTIVE','PAUSED'].includes(v.mission)||v.state==='ESTOP';$('pause').textContent=v.mission==='PAUSED'?'恢复':'暂停';$('cancel').disabled=!['ACTIVE','PAUSED'].includes(v.mission);$('estop').textContent=v.state==='ESTOP'?(liveMode?'清除急停请求':'复位急停'):(liveMode?'请求软件急停':'模拟急停');
+  $('connectionState').textContent=liveMode?v.connection:'模拟在线';$('total').textContent=String(snap.vehicles.length).padStart(2,'0');$('recovery').hidden=!liveMode;$('recovery').disabled=!v.recoveryReady;
+  document.querySelector('.live').textContent=liveMode?(adapter.online?'后端已连接 · 车端状态':'后端连接中断'):'前端仿真运行中';
+  if(liveMode){for(const id of ['dispatch','pause','cancel'])$(id).disabled ||= !adapter.online||['STALE','UNKNOWN'].includes(v.state);$('recovery').disabled ||= !adapter.online;$('faults').textContent=String((snap.faults||[]).filter(f=>f.active).length).padStart(2,'0');$('completed').textContent='—';$('rate').disabled=true;}else $('rate').disabled=false;
  }
- for(const name of ['dispatch','pause','cancel','estop'])$(name).onclick=()=>{$('feedback').textContent=adapter[name](selected);render();};
- $('scene').onchange=e=>{adapter.changeScene(e.target.value);selected='CAR-01';buildMap();$('feedback').textContent='场景已切换，点击下发任务开始。';render();};
+ for(const name of ['dispatch','pause','cancel','estop'])$(name).onclick=async()=>{try{$('feedback').textContent=await adapter[name](selected);}catch(e){$('feedback').textContent=e.message;}render();};
+ $('scene').onchange=e=>{adapter.changeScene(e.target.value);selected=adapter.vehicles[0].id;buildMap();$('feedback').textContent='场景已切换，点击下发任务开始。';render();};
+ $('recovery').onclick=async()=>{try{$('feedback').textContent=await adapter.recovery();}catch(e){$('feedback').textContent=e.message;}};
+ $('dataMode').onchange=()=>{const live=$('dataMode').value==='live';for(const id of ['apiLabel','robotLabel','connectBackend'])$(id).hidden=!live;if(!live){adapter.dispose?.();liveMode=false;adapter=new MockAdapter(log);selected='CAR-01';$('scene').value=adapter.sceneId;buildMap();adapter.dispatch(selected);document.querySelector('.demo').textContent='演示模式 · 模拟数据';$('connectionFeedback').textContent='无需后端 · 操作仅影响演示车辆';render();}};
+ if(location.hostname==='localhost'||location.hostname==='127.0.0.1')$('apiURL').value=location.origin;
+ $('connectBackend').onclick=async()=>{try{const next=new LiveAdapter($('apiURL').value.trim(),$('robotId').value.trim(),scenes,log);await next.tick();if(!next.online)throw Error('连接失败，请检查地址、HTTPS 和后端跨域设置');adapter.dispose?.();adapter=next;liveMode=true;selected=next.robotId;$('scene').value=next.sceneId;buildMap();document.querySelector('.demo').textContent='后端连接 · 车端数据';$('connectionFeedback').textContent='已连接 · 场景选择仅决定下发路线，不会切换车端地图';render();}catch(e){$('connectionFeedback').textContent=e.message;}};
  $('clear').onclick=()=>{logs=[];renderLogs();};
  buildMap();adapter.dispatch('CAR-01');render();
  let previous=performance.now();setInterval(()=>{const now=performance.now();adapter.tick(Math.min((now-previous)/1000,.5)*Number($('rate').value));previous=now;render();},100);
 }
+

@@ -14,3 +14,9 @@ jobs:
         with:
           node-version: '22'
       - run: node --check site/app.js
+      - run: node --check site/live-adapter.js
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r backend/requirements.txt -e robot_contracts
+      - run: PYTHONPATH=backend:robot_contracts pytest backend/tests gateway/tests robot_contracts/tests -q

@@ -1,0 +1,23 @@
+# Robot Cloud Platform 后端镜像
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY robot_contracts /tmp/robot_contracts
+RUN pip install --no-cache-dir /tmp/robot_contracts
+
+COPY backend/app /app/app
+
+# 将 Web Dashboard 静态目录复制进镜像（/app/web，main.py 向上探测可自动找到）
+COPY site /app/site
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+

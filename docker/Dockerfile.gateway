@@ -1,0 +1,15 @@
+# Gateway uses the same ROS distro and generated interface definitions as the vehicle.
+FROM ros:jazzy-ros-base
+ARG ROS2DRIVE_REF=d40910544f2701b2fdacfc1c4db2791ec1b60098
+RUN apt-get update && apt-get install -y --no-install-recommends git python3-pip python3-venv ros-jazzy-rosidl-default-generators && rm -rf /var/lib/apt/lists/*
+RUN git clone https://github.com/frankwang98/ROS2Drive.git /tmp/vehicle && cd /tmp/vehicle && git checkout "$ROS2DRIVE_REF" && mkdir -p /opt/interfaces/src/self_driving_car_demo && cp -a msg action package.xml /opt/interfaces/src/self_driving_car_demo/
+COPY docker/gateway_interfaces/CMakeLists.txt /opt/interfaces/src/self_driving_car_demo/CMakeLists.txt
+RUN bash -c 'source /opt/ros/jazzy/setup.bash && cd /opt/interfaces && colcon build --packages-select self_driving_car_demo' && rm -rf /tmp/vehicle
+RUN python3 -m venv --system-site-packages /opt/gateway-venv
+COPY gateway/requirements.txt /tmp/requirements.txt
+RUN /opt/gateway-venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt
+COPY robot_contracts /tmp/robot_contracts
+RUN /opt/gateway-venv/bin/pip install --no-cache-dir /tmp/robot_contracts
+COPY gateway/ /opt/gateway/
+WORKDIR /opt/gateway
+ENTRYPOINT ["bash", "-c", "source /opt/ros/jazzy/setup.bash && source /opt/interfaces/install/setup.bash && exec /opt/gateway-venv/bin/python ros2_bridge.py \"$@\"", "--"]
