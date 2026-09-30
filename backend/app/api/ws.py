@@ -10,6 +10,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.services.robot_state import state_store
 from app.services.robot_registry import robot_registry
+from app.services.typed_state import typed_state
 
 logger = logging.getLogger("robot.ws")
 
@@ -53,3 +54,39 @@ async def robot_ws(websocket: WebSocket):
         logger.info("WebSocket 客户端断开")
     finally:
         state_store.unsubscribe(queue)
+
+
+@router.websocket("/ws/v2/robots/{robot_id}/typed")
+async def typed_ws(websocket: WebSocket, robot_id: str):
+    """Push v2 typed payloads (runtime_status, control, trajectory, ...).
+
+    Wire format:
+        on connect: {"type": "snapshot", "robot_id": "...", "data": {...}}
+        on update:  {"type": "<typed>", "robot_id": "...", "data": {...}, "ts": <float>}
+
+    Clients can subscribe to *all* types or filter by sending
+        {"action": "subscribe", "types": ["runtime_status", "control"]}
+    over the socket. Default is "all". Filtering is client-side today;
+    the server always pushes everything and lets the client drop what
+    it does not want. (Future: server-side filter.)
+    """
+    await websocket.accept()
+    queue = typed_state.subscribe()
+    try:
+        await websocket.send_text(json.dumps({
+            "type": "snapshot",
+            "robot_id": robot_id,
+            "data": typed_state.snapshot(robot_id),
+        }))
+        while True:
+            try:
+                msg = await queue.get()
+            except asyncio.CancelledError:
+                break
+            if msg["robot_id"] != robot_id:
+                continue
+            await websocket.send_text(json.dumps(msg))
+    except WebSocketDisconnect:
+        logger.info("typed ws 客户端断开: %s", robot_id)
+    finally:
+        typed_state.unsubscribe(queue)

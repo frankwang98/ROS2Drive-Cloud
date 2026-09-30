@@ -5,15 +5,43 @@ import uuid
 from enum import Enum
 from typing import Any
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "2.0"
 
 
 class MessageType(str, Enum):
+    """Wire envelope message types. v2 adds typed topics alongside v1 carry-overs."""
+
+    # v1 carry-overs
     TELEMETRY = "telemetry"
     EVENT = "event"
     COMMAND = "command"
     COMMAND_ACK = "command_ack"
     HEARTBEAT = "heartbeat"
+
+    # v2 typed topics (vehicle → cloud)
+    RUNTIME_STATUS = "runtime_status"
+    FAULT = "fault"
+    METRICS = "metrics"
+    CONTROL = "control"
+    TRAJECTORY = "trajectory"
+
+    # v2 mission lifecycle (cloud → vehicle, vehicle → cloud)
+    MISSION_COMMAND = "mission_command"
+    MISSION_FEEDBACK = "mission_feedback"
+    MISSION_RESULT = "mission_result"
+
+    # v2 direct control
+    EMERGENCY_STOP = "emergency_stop"
+
+
+# Mapping from MessageType to its expected payload class. Populated in payloads
+# module to avoid a circular import at module load time.
+PAYLOAD_TYPES: dict[str, type] = {}
+
+
+def register_payload(message_type: str, payload_class: type) -> None:
+    """Register a payload dataclass for a given MessageType."""
+    PAYLOAD_TYPES[message_type] = payload_class
 
 
 class CommandStatus(str, Enum):

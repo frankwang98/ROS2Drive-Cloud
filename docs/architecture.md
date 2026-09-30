@@ -2,57 +2,88 @@
 
 ## 总览
 
-Robot Cloud Platform 是一个"机器人 + 云原生"平台，核心目标是将 ROS2 机器人
-（如 `ros2_car`）的显示控制能力通过云原生技术栈上云，提供统一的 Web Dashboard。
+ROS2Drive Cloud 是 [`ros2_car`](../ros2_car)（运行时层为 **ROS2Drive**）的云端控制面。
+核心目标不是「把 ROS topic 搬到网页上」，而是提供一个能完成 *任务下发 / 车队管理 /
+状态可视化 / 远程运维* 的车云协同平台。Web Dashboard 只是用户入口之一。
 
 ## 分层架构
 
 ```
-┌────────────────────────────────────────────┐
-│             Web Dashboard (前端)            │
-│        实时状态 · 远程控制 · 消息监控        │
-└────────────────────┬───────────────────────┘
-                     │ WebSocket / REST
-┌────────────────────▼───────────────────────┐
-│      Backend (FastAPI, Python)             │
-│   REST API · WebSocket · 状态管理 · 鉴权    │
-└────────────────────┬───────────────────────┘
-                     │ MQTT
-┌────────────────────▼───────────────────────┐
-│      Gateway (ROS2 ⇄ 消息总线, Python)     │
-│   ROS2 topics → 统一 JSON → MQTT            │
-└────────────────────┬───────────────────────┘
-                     │ ROS2 topics
-┌────────────────────▼───────────────────────┐
-│      ROS2 机器人 (ros2_car)                │
-│   感知 → 决策 → 控制 → RViz 可视化         │
-└────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                  Web Dashboard (前端)                        │
+│        Map · Vehicle · Mission · Alarm · Telemetry           │
+└────────────────────────┬─────────────────────────────────────┘
+                         │ REST / WebSocket
+┌────────────────────────▼─────────────────────────────────────┐
+│            Backend (FastAPI, Python)                         │
+│   Vehicles · Missions · Telemetry · Runtime · Events         │
+└────────────────────────┬─────────────────────────────────────┘
+                         │ MQTT (v2 envelope)
+┌────────────────────────▼─────────────────────────────────────┐
+│    Edge Gateway (this repo, gateway/)                        │
+│                                                              │
+│    ROS 2 typed topics / Action  ⇄  MQTT v2 envelope          │
+│    - runtime/status, runtime/faults, runtime/metrics         │
+│    - control/command, planning/trajectory                    │
+│    - mission/execute (action)  + emergency_stop              │
+│    - 兼容 legacy sdc/* scalars                               │
+└────────────────────────┬─────────────────────────────────────┘
+                         │ ROS 2 typed interfaces
+┌────────────────────────▼─────────────────────────────────────┐
+│                          ROS2Drive                           │
+│                                                              │
+│  MissionManager → BehaviorManager → Planner →                │
+│  VelocityPlanner → Controller → SafetyManager                │
+│                                                              │
+│  VehicleInterface (SimulatedVehicle / CAN Adapter)           │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## 关键设计
 
-### 1. 消息桥接层（Gateway）
-- 运行于机器人侧或与机器人同网段
-- 订阅 ros2_car 的 ROS2 话题
-- 转换为统一 JSON 模型（`{robot_id, topic, type, data}`）
-- MQTT 是唯一默认车云数据面；ZMQ 仅作为显式开启的实验兼容通道
+### 1. Gateway：typed 接口的唯一翻译层
 
-### 2. 后端状态管理（Backend）
-- `RobotStateStore`：线程安全地缓存每个话题最新值
-- 同时订阅 MQTT 和 ZMQ，保证多通道兼容
-- 通过 WebSocket 将更新实时广播给 Web Dashboard
+> **Cloud 不直接理解 ROS 2 topic。** Gateway 是车云之间的唯一翻译层。
 
-### 3. 云原生弹性（Kubernetes）
-- Backend 多副本 + HPA 自动扩缩容
-- MQTT Broker 独立部署
-- Ingress 统一对外入口
+- 订阅 ROS2Drive 的 typed topic（`runtime/status`、`runtime/faults`、
+  `runtime/metrics`、`control/command`、`planning/trajectory`），转成 v2 envelope 推到
+  MQTT。
+- 作为 `mission/execute` Action 的 client，把 Cloud 下发的 Mission 包成 Action goal
+  发给 ROS2Drive；把 feedback / result 重新打包成 `mission_feedback` /
+  `mission_result` envelope 回推 MQTT。
+- 下行 `emergency_stop` 直接转成 ROS 2 `sdc/emergency_stop`（Bool）发布。
+- **legacy 兼容**：旧的 `sdc/speed` / `sdc/odometry` / `sdc/control_algo` / `sdc/pause` /
+  `sdc/clear_trail` 继续按 v1 envelope 上报，等 Backend 完成 v2 升级后再退役。
 
-### 4. 前端显示控制（Web Dashboard）
-- 实时展示速度、行为、前方距离、障碍物数量
-- 远程切换控制算法（PID / Bang-Bang / Ramp）
-- 暂停/继续仿真、清除轨迹
+详细协议字段见 [`protocol-v2.md`](protocol-v2.md)；ROS 2 接口契约见
+[`../ros2_car/docs/interfaces.md`](../ros2_car/docs/interfaces.md)。
 
-## 可观测性扩展（规划）
-- Prometheus 指标暴露（backend `/metrics`）
-- 集中日志（Loki / EFK）
-- 链路追踪（Jaeger / OpenTelemetry）
+### 2. Backend 状态管理
+
+- 按 `robot_id` 隔离状态，进程内缓存 typed payload（v2 envelope）+ legacy scalars（v1
+  envelope）。
+- 通过 WebSocket 推送增量到 Web Dashboard，前端按 type 路由到对应组件（地图 / 卡片 /
+  Mission 面板 / Fault 列表）。
+- v2 envelope 要求 `schema_version=2.0`，v1 envelope 在 v2 协议下**拒绝解码**——升级
+  时必须同步升级 Backend。
+
+### 3. 部署
+
+- 第一版目标：**Docker Compose 一键启动** Cloud 侧（MQTT broker + Backend + 静态
+  Dashboard）。Gateway 与 ROS2Drive 留在本地三终端联调。
+- 不引入 Kubernetes / PostgreSQL / Redis。等数据闭环与多车需求出现后再按需添加。
+
+### 4. 前端（Web Dashboard）
+
+- 实时车辆卡片：online / pose / speed / battery / driving_mode / autonomy_state
+- 地图：每辆车一个 marker + 实时轨迹
+- Mission 面板：v2 mission lifecycle（创建 / 监控 progress / 取消）
+- 告警：按 `Fault.severity` 分级展示
+- Runtime 状态：显示 `runtime_state` / `mission_state` / `recovery_required`
+
+## 暂时不做（明确边界）
+
+- 不让 Cloud 越权设置 planner / controller 作为正式任务接口——只有 Mission 是正式入口
+- 不用软件 Safety 替代底盘硬件安全链路
+- 不引入 Kafka / Service Mesh / 车端微服务化
+- 第一版不引入 PostgreSQL / Redis / Kubernetes

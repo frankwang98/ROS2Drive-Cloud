@@ -1,6 +1,8 @@
 """FastAPI 应用入口。"""
 import asyncio
 import logging
+import threading
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -13,6 +15,7 @@ from app.services.mqtt_consumer import MQTTSubscriber
 from app.services.command_publisher import command_publisher
 from app.services.robot_state import state_store
 from app.services.robot_registry import robot_registry
+from app.services.typed_state import typed_state
 from app.services.zmq_consumer import ZMQSubscriber
 from robot_contracts import MessageType, parse_envelope
 
@@ -84,6 +87,28 @@ def _on_message(topic: str, payload: dict) -> None:
         robot_registry.heartbeat(robot_id, message["timestamp"])
     elif kind is MessageType.COMMAND_ACK:
         robot_registry.update_command_ack(robot_id, body)
+    elif kind in (
+        MessageType.RUNTIME_STATUS,
+        MessageType.FAULT,
+        MessageType.CONTROL,
+        MessageType.METRICS,
+        MessageType.TRAJECTORY,
+        MessageType.MISSION_FEEDBACK,
+        MessageType.MISSION_RESULT,
+    ):
+        # v2 typed payload: cache in typed_state; WebSocket subscribers get a
+        # typed broadcast and the legacy robot_registry stays untouched.
+        typed_state.update(
+            robot_id,
+            kind.value,
+            body,
+            timestamp=message.get("timestamp"),
+            sequence=message.get("sequence"),
+        )
+        _rx_counter[kind.value] = _rx_counter.get(kind.value, 0) + 1
+    else:
+        # Other v1 types (event, command) are forward-only; log at debug.
+        logger.debug("忽略 type=%s topic=%s", kind.value, topic)
 
 
 @app.on_event("startup")
@@ -91,6 +116,7 @@ async def startup() -> None:
     loop = asyncio.get_running_loop()
     state_store.attach_loop(loop)
     robot_registry.attach_loop(loop)
+    typed_state.attach_loop(loop)
 
     mqtt = MQTTSubscriber(_on_message)
     mqtt.start()
@@ -100,7 +126,30 @@ async def startup() -> None:
         _subscribers.append(zmq)
     command_publisher.start()
     _subscribers.append(mqtt)
+
+    # Periodic RX summary so an operator can confirm typed payloads are
+    # arriving at the backend without enabling debug logging.
+    _rx_summary_thread = threading.Thread(
+        target=_rx_summary_loop, daemon=True, name="rx-summary"
+    )
+    _rx_summary_thread.start()
+
     logger.info("机器人后端已启动：%s v%s", settings.app_name, settings.app_version)
+
+
+_rx_counter: dict[str, int] = {}
+
+
+def _rx_summary_loop() -> None:
+    """Log a per-type receive count every 30 s for ops visibility."""
+    while True:
+        time.sleep(30.0)
+        if not _rx_counter:
+            continue
+        items = ", ".join(
+            f"{k}={v}" for k, v in sorted(_rx_counter.items())
+        )
+        logger.info("[RX summary 30s] %s", items)
 
 
 @app.on_event("shutdown")

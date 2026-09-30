@@ -1,7 +1,0 @@
-# Robot Cloud Platform 命名空间
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: robot-cloud
-  labels:
-    app: robot-cloud-platform

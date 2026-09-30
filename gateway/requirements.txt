@@ -1,4 +1,13 @@
 # Gateway 依赖（在机器人侧或桥接容器内安装）
+#
+# MQTT 是车云唯一数据面，paho-mqtt 必装。
+# pyzmq 保留为可选，默认关闭（v2 协议不再依赖 ZMQ）。
+#
+# ROS 2 Python 客户端用于订阅 typed topics + 接 mission Action：
+# - 机器人侧 / 真车侧：直接复用 `source /opt/ros/jazzy/setup.bash` 后的系统包，
+#   不要通过 pip 强行安装 rclpy（容易和系统 ROS 版本冲突）。
+# - 桥接容器（如本仓库的 docker/Dockerfile.gateway）：镜像里已经 source ROS，
+#   同样不需要 pip 安装 rclpy。
+
 paho-mqtt==2.1.0
-pyzmq==26.0.3
-# 若在机器人侧运行需 ROS2 Python 客户端，通常系统自带
+pyzmq==26.0.3        # 可选实验通道，默认关闭
