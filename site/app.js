@@ -71,7 +71,7 @@ if(typeof document!=='undefined'){
   if(s.closed)for(const a of [.85,3,5.15]){const p=mapProject({x:24.5*Math.cos(a),y:24.5*Math.sin(a)});svg('rect',{x:p.x-5,y:p.y-5,width:10,height:10,rx:2,fill:'#ffcb75'},$('stations'));}
   svg('text',{x:24,y:485,class:'map-text'},$('terrain'),`${s.profile} / FollowRoute`);
   $('sceneTitle').textContent=s.name;$('sceneId').textContent=adapter.sceneId;$('mapCaption').textContent=`${s.name} · 参考路线`;$('sceneNote').textContent=s.note;$('source').href=`https://github.com/frankwang98/ROS2Drive/blob/main/src/scenario/${s.file}`;
-  $('fleet').replaceChildren(...adapter.vehicles.map(v=>{const b=document.createElement('button');b.className='vehicle';b.id=`fleet-${v.id}`;b.innerHTML=`<span class="vehicle-top"><b>${v.id}</b><span class="vehicle-status"></span></span><small></small>`;b.onclick=()=>{selected=v.id;$('feedback').textContent=liveMode?'操作将发送到所连接车辆。':'操作仅作用于模拟车辆。';render();};return b;}));
+  $('fleet').replaceChildren(...adapter.vehicles.map(v=>{const b=document.createElement('button');b.className='vehicle';b.id=`fleet-${v.id}`;b.innerHTML=`<span class="vehicle-top"><b></b><span class="vehicle-status"></span></span><small></small>`;b.querySelector('b').textContent=v.id;b.onclick=()=>{selected=v.id;$('feedback').textContent=liveMode?'操作将发送到所连接车辆。':'操作仅作用于模拟车辆。';render();};return b;}));
   for(const v of adapter.vehicles){const g=svg('g',{id:`map-${v.id}`},$('vehicles'));svg('circle',{r:17,fill:'#5be3b1',opacity:.12},g);svg('g',{class:'car-body'},g);svg('text',{x:14,y:-15,class:'vehicle-label'},g,v.id);}
  }
  function render(){const snap=adapter.snapshot(),v=snap.vehicles.find(v=>v.id===selected);
