@@ -132,6 +132,11 @@ class TypedStateStore:
                 if rid == robot_id
             }
 
+    def robot_ids(self) -> tuple[str, ...]:
+        """Robots known through typed telemetry, including heartbeat-free senders."""
+        with self._lock:
+            return tuple(sorted({rid for rid, _ in self._data}))
+
     def known_types(self) -> tuple[str, ...]:
         return tuple(sorted(_TYPED_TYPES))
 
@@ -164,3 +169,4 @@ class TypedStateStore:
 
 
 typed_state = TypedStateStore()
+

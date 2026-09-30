@@ -2,6 +2,12 @@
 
 ROS2Drive 的网页控制台与车云网关。默认打开四种场景演示，也可连接已有后端读取车端状态、下发 FollowRoute 任务、暂停、取消和请求软件急停。
 
+## 车队只读监控
+
+首页“车队监控”进入 `site/monitor.html`：车队在线概况、任务进度、单车局部轨迹、当前活跃故障与本次会话趋势。默认演示；连接模式使用现有 FastAPI/Gateway，需更新后端以提供 `/api/v1/robots/fleet-snapshot`。过期数据与断连显示未知，不下发车辆指令。
+
+此页吸收 `iov_monitor` 的展示思路，统一由本仓库维护。详见 [迁移说明](docs/iov-monitor-migration.md)。
+
 ## 先看网页
 
 [打开控制台](https://frankwang98.github.io/ROS2Drive-Cloud/)。无需本地 Docker；默认操作仅作用于模拟车辆。
@@ -39,3 +45,4 @@ node --check site/live-adapter.js
 ```
 
 本次整合已通过 67 项测试；ROS Action 和容器构建仍需在有 ROS2/Docker 的环境联调。详见 [整合说明](docs/integration.md)。
+

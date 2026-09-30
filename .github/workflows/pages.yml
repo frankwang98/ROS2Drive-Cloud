@@ -21,10 +21,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check site/app.js && node --check site/live-adapter.js
+      - run: node --check site/app.js && node --check site/live-adapter.js && node --check site/monitor.js && node --check site/fleet-model.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
       - uses: actions/deploy-pages@v4
         id: deploy
+
