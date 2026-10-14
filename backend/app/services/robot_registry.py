@@ -74,7 +74,7 @@ class RobotRegistry:
             command = self._commands.setdefault(command_id, {"message_id": command_id, "robot_id": robot_id})
             if command.get("robot_id") != robot_id:
                 return
-            if command.get("status") in {"SUCCEEDED", "FAILED", "REJECTED", "CANCELED", "EXPIRED"}:
+            if command.get("status") in {"SUCCEEDED", "FAILED", "REJECTED", "CANCELED", "EXPIRED", "TIMEOUT"}:
                 return
             command.update({"status": payload.get("status"), "detail": payload.get("detail"), "updated_at": time.time()})
         self._broadcast(robot_id, "command_ack", deepcopy(command))
