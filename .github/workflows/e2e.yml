@@ -1,0 +1,28 @@
+name: Cloud MQTT E2E
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  mock-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Start broker, backend and mock vehicle
+        run: ./scripts/run_all.sh mock
+      - name: Wait for mock subscription
+        run: sleep 5
+      - name: Verify telemetry and command acknowledgement
+        run: python3 scripts/verify_e2e.py
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose -f docker/docker-compose.yml --profile demo logs --tail=200
+      - name: Stop containers
+        if: always()
+        run: docker compose -f docker/docker-compose.yml --profile demo down --remove-orphans
