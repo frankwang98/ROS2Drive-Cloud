@@ -23,6 +23,37 @@ jobs:
       - name: Show service logs on failure
         if: failure()
         run: docker compose -f docker/docker-compose.yml --profile demo logs --tail=200
+      - name: Export public E2E result
+        if: always()
+        env:
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_RUN_ATTEMPT: ${{ github.run_attempt }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          os.makedirs('e2e-report', exist_ok=True)
+          result = {
+              'schema_version': 1,
+              'kind': 'mqtt-mock-e2e',
+              'status': os.environ['JOB_STATUS'].lower(),
+              'timestamp': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ['GH_SHA'],
+              'run_url': 'https://github.com/{}/actions/runs/{}'.format(os.environ['GH_REPOSITORY'], os.environ['GH_RUN_ID']),
+              'run_attempt': int(os.environ['GH_RUN_ATTEMPT']),
+              'scope': 'Backend + MQTT broker + Mock Robot; no real ROS2 or vehicle',
+          }
+          with open('e2e-report/latest.json', 'w') as f:
+              json.dump(result, f, indent=2)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloud-e2e-result
+          path: e2e-report/latest.json
       - name: Stop containers
         if: always()
         run: docker compose -f docker/docker-compose.yml --profile demo down --remove-orphans
