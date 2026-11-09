@@ -14,6 +14,13 @@ ROS2Drive 的网页控制台与车云网关。默认打开四种场景演示，�
 
 `site/` 是当前前端，`main` 更新由本仓库 `.github/workflows/pages.yml` 独立发布。个人主页仓库不再同步代码。GitHub Pages 仅托管静态前端，不运行 Python、MQTT 或 ROS。
 
+## 连接纯 C++ Native Runtime（无需 ROS2）
+
+新适配器 `gateway/native_runtime_bridge.py` 可将 ROS2Drive 的
+`ros2drive_live` 原生仿真接入现有 MQTT / FastAPI / Dashboard，并接收
+FollowRoute、取消、暂停及急停指令。完整步骤见
+[Native C++ ↔ Cloud 联调](docs/native-runtime-mqtt.md)。
+
 ## 连接 ROS2Drive
 
 1. 在可访问车端的主机启动 MQTT 和后端：`bash scripts/run_cloud.sh`。
